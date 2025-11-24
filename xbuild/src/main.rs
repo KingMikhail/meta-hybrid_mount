@@ -13,13 +13,15 @@ use zip::{CompressionMethod, write::FileOptions};
 use crate::zip_ext::zip_create_from_directory_with_options;
 
 fn main() -> Result<()> {
-    let temp_dir = temp_dir();
 
-    // Clean temp dir
-    if temp_dir.exists() {
-        fs::remove_dir_all(&temp_dir)?;
+    let build_dir = Path::new("output").join("module_files");
+
+    if build_dir.exists() {
+        fs::remove_dir_all(&build_dir)?;
     }
-    fs::create_dir_all(&temp_dir)?;
+    fs::create_dir_all(&build_dir)?;
+
+    build_webui()?;
 
     let mut cargo = cargo_ndk();
     let args = vec![
@@ -32,7 +34,6 @@ fn main() -> Result<()> {
         "trim-paths",
         "--release",
     ];
-
     cargo.args(args);
 
     let status = cargo.spawn()?.wait()?;
@@ -40,79 +41,82 @@ fn main() -> Result<()> {
         anyhow::bail!("Cargo build failed");
     }
 
-    // Copy module files
     let module_dir = module_dir();
     dir::copy(
         &module_dir,
-        &temp_dir,
+        &build_dir,
         &dir::CopyOptions::new().overwrite(true).content_only(true),
     )?;
     
-    // Remove gitignore if exists
-    if temp_dir.join(".gitignore").exists() {
-        fs::remove_file(temp_dir.join(".gitignore"))?;
+    if build_dir.join(".gitignore").exists() {
+        fs::remove_file(build_dir.join(".gitignore"))?;
     }
 
-    // Inject Git Commit ID into module.prop
-    if let Err(e) = inject_version(&temp_dir) {
+    let version = inject_version(&build_dir).unwrap_or_else(|e| {
         println!("Warning: Failed to inject version: {}", e);
-    }
+        "unknown".to_string()
+    });
+    fs::write(Path::new("output").join("version"), &version)?;
 
-    // Copy binary (Rename to meta-hybrid)
     file::copy(
         bin_path(),
-        temp_dir.join("meta-hybrid"),
+        build_dir.join("meta-hybrid"),
         &file::CopyOptions::new().overwrite(true),
     )?;
 
-    // Build WebUI
-    build_webui()?;
-
-    // Zip it
     let options = FileOptions::<()>::default()
         .compression_method(CompressionMethod::Deflated)
         .compression_level(Some(9));
         
-    let output_zip = Path::new("output").join("meta-hybrid.zip");
-    if let Some(parent) = output_zip.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
+    let zip_name = format!("meta-hybrid-{}.zip", version);
+    let output_zip = Path::new("output").join(zip_name);
+    
     zip_create_from_directory_with_options(
         &output_zip,
-        &temp_dir,
+        &build_dir,
         |_| options,
     )?;
 
     println!("Build success: {}", output_zip.display());
+    println!("Module directory prepared at: {}", build_dir.display());
+    
     Ok(())
 }
 
-fn inject_version(temp_dir: &Path) -> Result<()> {
-    // Get git short hash
+fn inject_version(target_dir: &Path) -> Result<String> {
+    // 获取 git短hash
     let output = Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
         .output()?;
     
-    if output.status.success() {
-        let hash = String::from_utf8(output.stdout)?.trim().to_string();
-        let prop_path = temp_dir.join("module.prop");
-        
-        if prop_path.exists() {
-            let content = fs::read_to_string(&prop_path)?;
-            let new_content = content.lines().map(|line| {
-                if line.starts_with("version=") {
-                    format!("{}-g{}", line, hash)
-                } else {
-                    line.to_string()
-                }
-            }).collect::<Vec<_>>().join("\n");
-            
-            fs::write(prop_path, new_content)?;
-            println!("Injected version with commit hash: {}", hash);
-        }
+    if !output.status.success() {
+        return Ok("v0.0.0".to_string());
     }
-    Ok(())
+    
+    let hash = String::from_utf8(output.stdout)?.trim().to_string();
+    let prop_path = target_dir.join("module.prop");
+    let mut full_version = format!("v0.0.0-g{}", hash);
+
+    if prop_path.exists() {
+        let content = fs::read_to_string(&prop_path)?;
+        let mut new_lines = Vec::new();
+        
+        for line in content.lines() {
+            if line.starts_with("version=") {
+                // 保留原版本号，追加 hash，例如: version=v0.3.0-g1a2b3c
+                let base = line.trim().strip_prefix("version=").unwrap_or("");
+                full_version = format!("{}-g{}", base, hash);
+                new_lines.push(format!("version={}", full_version));
+            } else {
+                new_lines.push(line.to_string());
+            }
+        }
+        
+        fs::write(prop_path, new_lines.join("\n"))?;
+        println!("Injected version: {}", full_version);
+    }
+    
+    Ok(full_version)
 }
 
 fn module_dir() -> PathBuf {
@@ -123,7 +127,6 @@ fn temp_dir() -> PathBuf {
     Path::new("output").join(".temp")
 }
 
-// Binary name in Cargo.toml is meta-hybrid
 fn bin_path() -> PathBuf {
     Path::new("target")
         .join("aarch64-linux-android")

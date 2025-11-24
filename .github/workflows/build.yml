@@ -58,13 +58,29 @@ jobs:
 
       - name: Build Project
         run: |
-          # Run the custom build tool 'xbuild' defined in the workspace
-          # This handles Rust cross-compilation, WebUI building, and ZIP packaging
-          cargo run -p xbuild --release
+          # Run the custom build tool 'xbuild'
+          # Use cargo-ndk to set up the cross-compilation environment (Linker, CC, AR)
+          # -t arm64-v8a: Target Architecture
+          # -p 30: Android API Level
+          cargo ndk -t arm64-v8a -p 30 -- cargo run -p xbuild --release
+          
+          # Export version to GITHUB_ENV for the next step
+          # xbuild has already written the version to output/version
+          if [ -f "output/version" ]; then
+            echo "MODULE_VERSION=$(cat output/version)" >> $GITHUB_ENV
+          else
+            echo "MODULE_VERSION=unknown" >> $GITHUB_ENV
+          fi
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Meta-Hybrid-Module
-          path: output/*.zip
+          # Artifact name reflects the version (e.g., Meta-Hybrid-v0.3.0-g123456)
+          name: Meta-Hybrid-${{ env.MODULE_VERSION }}
+          # Upload the DIRECTORY contents.
+          # This causes GitHub to create a zip where module.prop is at the root.
+          # This zip is DIRECTLY FLASHABLE in Magisk/KSU.
+          path: output/module_files/
           if-no-files-found: error
+          # Include hidden files just in case
+          include-hidden-files: true
