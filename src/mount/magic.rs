@@ -67,9 +67,14 @@ fn collect_module_files(module_paths: &[PathBuf], extra_partitions: &[String]) -
                 continue;
             }
 
+            let path_of_root = Path::new("/").join(partition);
+            if !path_of_root.exists() {
+                continue;
+            }
+
             let mod_part = path.join(partition);
             if mod_part.is_dir() {
-                let node = system.children.entry(partition.to_string())
+                let node = root.children.entry(partition.to_string())
                     .or_insert_with(|| Node::new_root(partition));
                 has_file |= node.collect_module_files(&mod_part)?;
             }
@@ -181,6 +186,7 @@ where
             if let Some(module_path) = &current.module_path {
                 mount_bind(module_path, target_path).with_context(|| {
                     if !disable_umount {
+                        // 关键修改：调用 KernelSU 的 try_umount 逻辑
                         let _ = send_unmountable(target_path);
                     }
                     format!(
@@ -346,6 +352,7 @@ where
                     log::warn!("make dir {} private: {e:#?}", path.display());
                 }
                 if !disable_umount {
+                    // 关键修改：移动挂载点后，通知 KSU 进行命名空间分离
                     let _ = send_unmountable(path);
                 }
             }
