@@ -5,21 +5,20 @@
   padding-bottom: 32px;
 }
 
-/* Header Section */
 .project-header {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  padding: 24px 0;
+  padding: 32px 0;
   background-color: var(--md-sys-color-surface-container);
-  border-radius: 16px;
+  border-radius: 24px;
   box-shadow: var(--md-sys-elevation-1);
 }
 
 .app-logo {
-  width: 80px;
-  height: 80px;
+  width: 160px;
+  height: 160px;
   background: transparent;
   color: var(--md-sys-color-on-surface);
   display: flex;
@@ -28,21 +27,21 @@
 }
 
 .app-name {
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 500;
   color: var(--md-sys-color-on-surface);
+  margin-top: 8px;
 }
 
 .app-version {
   font-family: var(--md-ref-typeface-mono);
   font-size: 14px;
   background: rgba(0,0,0,0.05);
-  padding: 4px 12px;
-  border-radius: 12px;
+  padding: 6px 16px;
+  border-radius: 16px;
   color: var(--md-sys-color-on-surface-variant);
 }
 
-/* Actions Row */
 .action-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -83,7 +82,6 @@
   font-weight: 500;
 }
 
-/* Contributors List */
 .section-title {
   font-size: 18px;
   font-weight: 500;
@@ -123,7 +121,7 @@
 
 .c-info {
   flex: 1;
-  min-width: 0; /* Enable truncation */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;

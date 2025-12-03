@@ -60,12 +60,10 @@
   <div class="project-header">
     <div class="app-logo">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="100%" height="100%">
-        <desc>Hybrid Mount Logo (Monet)</desc>
-        <g transform="translate(200, 220)">
-          
+        <g transform="translate(200, 230) scale(1.3)">
           <g>
             <rect x="-145" y="20" width="290" height="70" rx="16" ry="16" fill="var(--md-sys-color-surface-variant)" />
-            <text x="0" y="65" font-family="var(--md-ref-typeface-mono)" font-size="28" font-weight="bold" fill="var(--md-sys-color-on-surface-variant)" text-anchor="middle" letter-spacing="1">/system</text>
+            <text x="0" y="65" font-family="var(--md-ref-typeface-mono)" font-size="26" font-weight="bold" fill="var(--md-sys-color-on-surface-variant)" text-anchor="middle" letter-spacing="1">/system</text>
           </g>
       
           <g transform="translate(-115, -95)">
@@ -84,7 +82,6 @@
           <g transform="translate(15, -95)">
             <rect x="0" y="0" width="100" height="100" rx="16" ry="16" fill="var(--md-sys-color-tertiary-container)" />
           </g>
-      
         </g>
       </svg>
     </div>

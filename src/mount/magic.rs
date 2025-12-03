@@ -365,10 +365,10 @@ pub fn mount_partitions(
     disable_umount: bool,
 ) -> Result<()> {
     if let Some(root) = collect_module_files(module_paths, extra_partitions)? {
-        log::info!("[Magic Mount Tree Constructed]");
+        log::debug!("[Magic Mount Tree Constructed]");
         let tree_str = format!("{:?}", root);
         for line in tree_str.lines() {
-            log::info!("   {}", line);
+            log::debug!("   {}", line);
         }
 
         let tmp_dir = tmp_path.join("workdir");
