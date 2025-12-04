@@ -197,21 +197,19 @@ export const store = $state({
   async loadStatus() {
     this.loading.status = true;
     try {
-      const [storageData, sysInfoData, activeMounts] = await Promise.all([
+      const [storageData, sysInfoData] = await Promise.all([
         API.getStorageUsage(),
-        API.getSystemInfo(),
-        API.getActiveMounts(this.config.mountsource)
+        API.getSystemInfo()
       ]);
       
       this.storage = storageData;
       this.systemInfo = sysInfoData;
-      this.activePartitions = activeMounts;
+      this.activePartitions = sysInfoData.activeMounts || [];
 
       if (this.modules.length === 0) {
         this.modules = await API.scanModules(this.config.moduledir);
       }
     } catch (e) {
-      // ignore
     }
     this.loading.status = false;
   }

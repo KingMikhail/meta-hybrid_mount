@@ -115,7 +115,7 @@ const RealAPI = {
       const cmdSys = `echo "KERNEL:$(uname -r)"; echo "SELINUX:$(getenforce)"`;
       const { errno: errSys, stdout: outSys } = await ksuExec(cmdSys);
       
-      let info = { kernel: '-', selinux: '-', mountBase: '-' };
+      let info = { kernel: '-', selinux: '-', mountBase: '-', activeMounts: [] };
       if (errSys === 0 && outSys) {
         outSys.split('\n').forEach(line => {
           if (line.startsWith('KERNEL:')) info.kernel = line.substring(7).trim();
@@ -131,6 +131,9 @@ const RealAPI = {
         try {
           const state = JSON.parse(outState);
           info.mountBase = state.mount_point || 'Unknown';
+          if (Array.isArray(state.active_mounts)) {
+            info.activeMounts = state.active_mounts;
+          }
         } catch (e) {
           console.error("Failed to parse daemon state JSON", e);
         }
@@ -139,30 +142,7 @@ const RealAPI = {
       return info;
     } catch (e) {
       console.error("System info check failed:", e);
-      return { kernel: 'Unknown', selinux: 'Unknown', mountBase: 'Unknown' };
-    }
-  },
-
-  getActiveMounts: async (sourceName) => {
-    try {
-      const src = sourceName || DEFAULT_CONFIG.mountsource;
-      const cmd = `mount | grep "${src}"`; 
-      const { errno, stdout } = await ksuExec(cmd);
-      
-      const mountedParts = [];
-      if (errno === 0 && stdout) {
-        stdout.split('\n').forEach(line => {
-          const parts = line.split(' ');
-          if (parts.length >= 3 && parts[2].startsWith('/')) {
-            const partName = parts[2].substring(1);
-            if (partName) mountedParts.push(partName);
-          }
-        });
-      }
-      return mountedParts;
-    } catch (e) {
-      console.error("Mount check failed:", e);
-      return [];
+      return { kernel: 'Unknown', selinux: 'Unknown', mountBase: 'Unknown', activeMounts: [] };
     }
   },
 
