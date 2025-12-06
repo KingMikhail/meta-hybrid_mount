@@ -5,6 +5,37 @@ use anyhow::Result;
 use serde::Serialize;
 use crate::{conf::config, defs, core::state};
 
+pub struct ModuleFile {
+    pub real_path: PathBuf,
+    pub relative_path: PathBuf,
+    pub file_type: fs::FileType,
+    pub is_whiteout: bool,
+    pub is_replace: bool,
+}
+
+impl ModuleFile {
+    pub fn new(root: &Path, relative_path: &Path) -> Result<Self> {
+        let real_path = root.join(relative_path);
+        let metadata = fs::symlink_metadata(&real_path)?;
+        let file_type = metadata.file_type();
+        let is_replace = if file_type.is_dir() {
+            real_path.join(".replace").exists()
+        } else {
+            false
+        };
+
+        let is_whiteout = false;
+
+        Ok(Self {
+            real_path,
+            relative_path: relative_path.to_path_buf(),
+            file_type,
+            is_whiteout,
+            is_replace,
+        })
+    }
+}
+
 #[derive(Serialize)]
 struct ModuleInfo {
     id: String,
