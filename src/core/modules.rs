@@ -2,11 +2,13 @@ use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::path::{Path, PathBuf};
+use std::collections::HashSet;
 use anyhow::Result;
 use serde::Serialize;
 use crate::conf::config::Config;
 use crate::core::inventory;
 use crate::defs;
+use crate::core::state::RuntimeState;
 
 #[derive(Serialize)]
 struct ModuleInfo {
@@ -16,6 +18,7 @@ struct ModuleInfo {
     author: String,
     description: String,
     mode: String,
+    is_mounted: bool,
     rules: inventory::ModuleRules,
 }
 
@@ -62,6 +65,13 @@ impl ModuleFile {
 
 pub fn print_list(config: &Config) -> Result<()> {
     let modules = inventory::scan(&config.moduledir, config)?;
+    
+    let state = RuntimeState::load().unwrap_or_default();
+    let mut mounted_ids = HashSet::new();
+    mounted_ids.extend(state.overlay_modules);
+    mounted_ids.extend(state.magic_modules);
+    mounted_ids.extend(state.hymo_modules);
+
     let mut infos = Vec::new();
 
     for m in modules {
@@ -81,6 +91,7 @@ pub fn print_list(config: &Config) -> Result<()> {
             author,
             description,
             mode: mode_str.to_string(),
+            is_mounted: mounted_ids.contains(&m.id),
             rules: m.rules,
         });
     }

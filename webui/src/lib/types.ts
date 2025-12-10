@@ -25,6 +25,7 @@ export interface Module {
   author: string;
   description: string;
   mode: string;
+  is_mounted: boolean;
   rules: ModuleRules;
   enabled?: boolean;
   source_path?: string;

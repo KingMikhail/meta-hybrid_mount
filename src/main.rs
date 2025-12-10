@@ -231,6 +231,7 @@ fn run() -> Result<()> {
         storage_handle.mount_point,
         exec_result.overlay_module_ids,
         exec_result.magic_module_ids,
+        exec_result.hymo_module_ids,
         nuke_active,
         active_mounts,
         storage_stats,

@@ -68,6 +68,9 @@
     gap: 8px;
     padding: 8px 12px;
     min-height: 56px;
+    max-height: 120px;
+    overflow-y: auto;
+    
     background: transparent;
     border: 1px solid var(--md-sys-color-outline);
     border-radius: 8px;

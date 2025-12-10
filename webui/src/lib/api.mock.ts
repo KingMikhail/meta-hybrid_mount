@@ -26,6 +26,7 @@ export const MockAPI = {
         author: 'Developer',
         description: 'This is a mock module for testing.',
         mode: 'magic',
+        is_mounted: true,
         rules: { 
             default_mode: 'magic', 
             paths: { "system/fonts": "hymofs" } 
@@ -38,9 +39,23 @@ export const MockAPI = {
         author: 'Google',
         description: 'Changes system colors.',
         mode: 'auto',
+        is_mounted: true,
         rules: { 
             default_mode: 'overlay', 
             paths: {} 
+        }
+      },
+      {
+        id: 'disabled_module',
+        name: 'Unmounted Module',
+        version: '0.1',
+        author: 'Tester',
+        description: 'This module is not mounted.',
+        mode: 'ignore',
+        is_mounted: false,
+        rules: {
+            default_mode: 'ignore',
+            paths: {}
         }
       }
     ];

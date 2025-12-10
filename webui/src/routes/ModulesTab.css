@@ -27,6 +27,13 @@
   border: 1px solid var(--md-sys-color-primary);
 }
 
+.rule-card.unmounted {
+    opacity: 0.6;
+}
+.rule-card.unmounted.expanded {
+    opacity: 1;
+}
+
 .rule-main {
   padding: 20px;
   display: flex;
@@ -118,6 +125,18 @@
   font-family: var(--md-ref-typeface-mono);
 }
 
+.status-alert {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--md-sys-color-on-surface-variant);
+    background-color: var(--md-sys-color-surface-container-high);
+    padding: 8px 12px;
+    border-radius: 8px;
+    margin-top: 12px;
+}
+
 .config-section {
   margin-top: 20px;
   padding-top: 16px;
@@ -148,6 +167,7 @@
   border-radius: 12px;
 }
 
+/* 核心修复区域：搜索框高度锁定 */
 .search-container {
   display: flex;
   align-items: center;
@@ -156,9 +176,24 @@
   background-color: var(--md-sys-color-surface-container-high);
   border-radius: 9999px; 
   padding: 0 24px;
+  
+  /* 强制固定高度 */
   height: 64px; 
-  box-shadow: none;
+  min-height: 64px;
+  max-height: 64px;
+  
+  /* 防止 Flex 子元素换行或撑大容器 */
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  overflow: hidden; 
+
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
   transition: background-color 0.2s;
+  
+  /* 粘性定位 */
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 
 .search-container:focus-within {
@@ -169,7 +204,7 @@
   width: 24px;
   height: 24px;
   fill: var(--md-sys-color-on-surface);
-  flex-shrink: 0;
+  flex-shrink: 0; /* 禁止图标被挤压 */
 }
 
 .search-input {
@@ -180,7 +215,8 @@
   font-size: 16px;
   color: var(--md-sys-color-on-surface);
   outline: none;
-  min-width: 0;
+  /* 关键：允许输入框宽度无限缩小，防止撑开容器 */
+  min-width: 0; 
 }
 
 .search-input::placeholder {
@@ -192,11 +228,46 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0; /* 禁止过滤器区域被挤压 */
+}
+
+.checkbox-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.checkbox-wrapper input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--md-sys-color-primary);
+    cursor: pointer;
+}
+
+.checkbox-wrapper label {
+    font-size: 13px;
+    color: var(--md-sys-color-on-surface-variant);
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.vertical-divider {
+    width: 1px;
+    height: 24px;
+    background-color: var(--md-sys-color-outline-variant);
+    opacity: 0.5;
 }
 
 .filter-label-text {
   font-size: 13px;
   color: var(--md-sys-color-on-surface-variant);
+  white-space: nowrap;
+  display: none; 
+}
+@media (min-width: 600px) {
+    .filter-label-text { display: block; }
 }
 
 .filter-select {
