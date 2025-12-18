@@ -204,7 +204,7 @@ fn main() -> Result<()> {
         cli.tempdir.clone(), 
         cli.mountsource.clone(), 
         cli.verbose, 
-        cli.partitions.clone(),
+        cli.partitions.clone(), 
         cli.dry_run,
     );
 
@@ -373,3 +373,4 @@ fn main() -> Result<()> {
 
     log::info!(">> System operational. Mount sequence complete.");
     Ok(())
+}

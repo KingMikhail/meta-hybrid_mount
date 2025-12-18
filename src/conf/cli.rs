@@ -55,3 +55,4 @@ pub enum Commands {
         #[arg(long)]
         value: Option<String>,
     },
+}
