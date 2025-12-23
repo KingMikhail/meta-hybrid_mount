@@ -1,3 +1,4 @@
+use std::ffi::CString;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
@@ -68,12 +69,16 @@ fn mount_overlayfs(
         if let (Some(u), Some(w)) = (&upperdir_str, &workdir_str) {
             data = format!("{},upperdir={},workdir={}", data, u, w);
         }
+
+        // Fix: Convert String to CString for rustix::mount::mount
+        let data_c = CString::new(data)?;
+
         mount(
             KSU_OVERLAY_SOURCE,
             dest,
             "overlay",
             MountFlags::empty(),
-            data,
+            data_c.as_c_str(),
         )?;
     }
     Ok(())
@@ -159,16 +164,17 @@ pub fn mount_overlay(
     let mounts = Process::myself()?
         .mountinfo()
         .with_context(|| "get mountinfo")?;
-    let mut mount_seq: Vec<&str> = mounts
+
+    // Fix: Use filter_map to handle Option<&str> and collect directly into Vec<&str>
+    let mut valid_mount_seq: Vec<&str> = mounts
         .0
         .iter()
         .filter(|m| {
             m.mount_point.starts_with(target) && !Path::new(target).starts_with(&m.mount_point)
         })
-        .map(|m| m.mount_point.to_str())
-        .collect::<Vec<_>>();
+        .filter_map(|m| m.mount_point.to_str())
+        .collect();
 
-    let mut valid_mount_seq: Vec<&str> = mount_seq.into_iter().flatten().collect();
     valid_mount_seq.sort();
     valid_mount_seq.dedup();
 
