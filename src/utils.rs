@@ -6,7 +6,7 @@ use std::{
     fmt as std_fmt,
     fs::{self, File, create_dir_all, remove_dir_all, remove_file, write},
     io::Write,
-    os::unix::fs::{PermissionsExt, symlink},
+    os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt, symlink},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::OnceLock,
@@ -408,6 +408,20 @@ pub fn reflink_or_copy(src: &Path, dest: &Path) -> Result<u64> {
     fs::copy(src, dest).map_err(|e| e.into())
 }
 
+fn make_device_node(path: &Path, mode: u32, rdev: u64) -> Result<()> {
+    let c_path = CString::new(path.as_os_str().as_encoded_bytes())?;
+    let dev = rdev as libc::dev_t;
+    
+    unsafe {
+        if libc::mknod(c_path.as_ptr(), mode, dev) != 0 {
+            let err = std::io::Error::last_os_error();
+            bail!("mknod failed for {}: {}", path.display(), err);
+        }
+    }
+    
+    Ok(())
+}
+
 fn native_cp_r(src: &Path, dst: &Path) -> Result<()> {
     if !dst.exists() {
         create_dir_all(dst)?;
@@ -416,17 +430,20 @@ fn native_cp_r(src: &Path, dst: &Path) -> Result<()> {
 
         fs::set_permissions(dst, src_meta.permissions())?;
 
-        lsetfilecon(dst, DEFAULT_CONTEXT)?;
+        if let Ok(ctx) = lgetfilecon(src) {
+             let _ = lsetfilecon(dst, &ctx);
+        } else {
+             lsetfilecon(dst, DEFAULT_CONTEXT)?;
+        }
     }
 
     for entry in fs::read_dir(src)? {
         let entry = entry?;
-
-        let ft = entry.file_type()?;
-
         let src_path = entry.path();
-
         let dst_path = dst.join(entry.file_name());
+        let metadata = entry.metadata()?;
+        let ft = metadata.file_type();
+        let ctx = lgetfilecon(&src_path).unwrap_or(DEFAULT_CONTEXT.to_string());
 
         if ft.is_dir() {
             native_cp_r(&src_path, &dst_path)?;
@@ -438,12 +455,20 @@ fn native_cp_r(src: &Path, dst: &Path) -> Result<()> {
             }
 
             symlink(&link_target, &dst_path)?;
-
-            let _ = lsetfilecon(&dst_path, DEFAULT_CONTEXT);
+            let _ = lsetfilecon(&dst_path, &ctx);
+        } else if ft.is_char_device() || ft.is_block_device() || ft.is_fifo() {
+             if dst_path.exists() {
+                 remove_file(&dst_path)?;
+             }
+             
+             let mode = metadata.permissions().mode();
+             let rdev = metadata.rdev();
+             
+             make_device_node(&dst_path, mode, rdev)?;
+             let _ = lsetfilecon(&dst_path, &ctx);
         } else {
             reflink_or_copy(&src_path, &dst_path)?;
-
-            lsetfilecon(&dst_path, DEFAULT_CONTEXT)?;
+            let _ = lsetfilecon(&dst_path, &ctx);
         }
     }
 
