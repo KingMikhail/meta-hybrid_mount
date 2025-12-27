@@ -61,6 +61,15 @@ impl Default for GranaryConfig {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum OverlayMode {
+    #[default]
+    Tmpfs,
+    Ext4,
+    Erofs,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
     #[serde(default = "default_moduledir")]
@@ -71,9 +80,7 @@ pub struct Config {
     #[serde(default, deserialize_with = "deserialize_partitions_flexible")]
     pub partitions: Vec<String>,
     #[serde(default)]
-    pub force_ext4: bool,
-    #[serde(default)]
-    pub use_erofs: bool,
+    pub overlay_mode: OverlayMode,
     #[serde(default)]
     pub enable_nuke: bool,
     #[serde(default)]
@@ -124,8 +131,7 @@ impl Default for Config {
             mountsource: default_mountsource(),
             verbose: false,
             partitions: Vec::new(),
-            force_ext4: false,
-            use_erofs: false,
+            overlay_mode: OverlayMode::default(),
             enable_nuke: false,
             disable_umount: false,
             allow_umount_coexistence: false,
