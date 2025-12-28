@@ -204,11 +204,16 @@ pub fn lgetfilecon<P: AsRef<Path>>(_path: P) -> Result<String> {
 }
 
 pub fn copy_path_context<S: AsRef<Path>, D: AsRef<Path>>(src: S, dst: D) -> Result<()> {
-    let context = if src.as_ref().exists() {
+    let mut context = if src.as_ref().exists() {
         lgetfilecon(&src).unwrap_or_else(|_| CONTEXT_SYSTEM.to_string())
     } else {
         CONTEXT_SYSTEM.to_string()
     };
+
+    if context.contains("u:object_r:rootfs:s0") {
+        context = CONTEXT_SYSTEM.to_string();
+    }
+
     lsetfilecon(dst, &context)
 }
 
