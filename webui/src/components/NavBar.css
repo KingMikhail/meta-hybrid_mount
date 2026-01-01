@@ -16,6 +16,8 @@
   -ms-overflow-style: none;
   gap: 8px;
   z-index: 100;
+  transition: padding-bottom 0.3s cubic-bezier(0.2, 0, 0, 1);
+  will-change: padding-bottom;
 }
 .bottom-nav.fix-padding {
   padding-bottom: calc(max(16px, var(--safe-area-inset-bottom, 0px)) + 48px);
