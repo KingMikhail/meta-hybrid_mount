@@ -1,6 +1,3 @@
-// Copyright 2025 Meta-Hybrid Mount Authors
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 use std::{
     ffi::CString,
     path::{Path, PathBuf},
@@ -11,7 +8,7 @@ use log::{info, warn};
 use procfs::process::Process;
 use rustix::{fd::AsFd, fs::CWD, mount::*};
 
-use crate::defs::KSU_OVERLAY_SOURCE;
+use crate::defs::{KSU_OVERLAY_SOURCE, SYSTEM_RW_DIR};
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use crate::try_umount::send_unmountable;
 
@@ -44,6 +41,7 @@ pub fn mount_overlayfs(
         .filter(|wd| wd.exists())
         .map(|e| e.display().to_string());
 
+    // Try New API (fsopen)
     let result = (|| {
         let fs = fsopen("overlay", FsOpenFlags::FSOPEN_CLOEXEC)?;
         let fs = fs.as_fd();
@@ -64,6 +62,7 @@ pub fn mount_overlayfs(
         )
     })();
 
+    // Fallback to Old API (mount)
     if let Err(e) = result {
         warn!("fsopen mount failed: {e:#}, fallback to mount");
         let mut data = format!("lowerdir={lowerdir_config}");
@@ -121,63 +120,6 @@ pub fn bind_mount(
     Ok(())
 }
 
-fn mount_overlay_child(
-    mount_point: &str,
-    relative: &str,
-    module_roots: &[String],
-    stock_root: &str,
-    #[cfg(any(target_os = "linux", target_os = "android"))] disable_umount: bool,
-) -> Result<()> {
-    if !module_roots
-        .iter()
-        .any(|lower| Path::new(lower).join(relative).exists())
-    {
-        return bind_mount(
-            stock_root,
-            mount_point,
-            #[cfg(any(target_os = "linux", target_os = "android"))]
-            disable_umount,
-        );
-    }
-
-    if !Path::new(stock_root).is_dir() {
-        return Ok(());
-    }
-
-    let mut lower_dirs: Vec<String> = vec![];
-    for lower in module_roots {
-        let lower_path = Path::new(lower).join(relative);
-        if lower_path.is_dir() {
-            lower_dirs.push(lower_path.display().to_string());
-        } else if lower_path.exists() {
-            return Ok(());
-        }
-    }
-
-    if lower_dirs.is_empty() {
-        return Ok(());
-    }
-
-    if let Err(e) = mount_overlayfs(
-        &lower_dirs,
-        stock_root,
-        None,
-        None,
-        mount_point,
-        #[cfg(any(target_os = "linux", target_os = "android"))]
-        disable_umount,
-    ) {
-        warn!("failed to overlay child {mount_point}: {e:#}, fallback to bind mount");
-        bind_mount(
-            stock_root,
-            mount_point,
-            #[cfg(any(target_os = "linux", target_os = "android"))]
-            disable_umount,
-        )?;
-    }
-    Ok(())
-}
-
 pub fn mount_overlay(
     root: &str,
     module_roots: &[String],
@@ -186,6 +128,13 @@ pub fn mount_overlay(
     #[cfg(any(target_os = "linux", target_os = "android"))] disable_umount: bool,
 ) -> Result<()> {
     info!("mount overlay for {root}");
+
+    // Safety check: ensure root exists before chdir
+    if !Path::new(root).exists() {
+        warn!("Target root {} does not exist, skipping.", root);
+        return Ok(());
+    }
+
     std::env::set_current_dir(root).with_context(|| format!("failed to chdir to {root}"))?;
     let stock_root = ".";
 
@@ -214,26 +163,26 @@ pub fn mount_overlay(
         disable_umount,
     )
     .with_context(|| "mount overlayfs for root failed")?;
+
+    // Handle child mounts (nested mounts)
     for mount_point in mount_seq.iter() {
         let Some(mount_point) = mount_point else {
             continue;
         };
         let relative = mount_point.replacen(root, "", 1);
-        let stock_root: String = format!("{stock_root}{relative}");
-        if !Path::new(&stock_root).exists() {
+        let stock_root_child: String = format!("{stock_root}{relative}");
+        if !Path::new(&stock_root_child).exists() {
             continue;
         }
-        if let Err(e) = mount_overlay_child(
+
+        // Use bind mount to restore visibility of child mounts
+        if let Err(e) = bind_mount(
+            &stock_root_child,
             mount_point,
-            &relative,
-            module_roots,
-            &stock_root,
             #[cfg(any(target_os = "linux", target_os = "android"))]
             disable_umount,
         ) {
-            warn!("failed to mount overlay for child {mount_point}: {e:#}, revert");
-            umount_dir(root).with_context(|| format!("failed to revert {root}"))?;
-            bail!(e);
+            warn!("failed to restore child mount {mount_point}: {e:#}");
         }
     }
     Ok(())
