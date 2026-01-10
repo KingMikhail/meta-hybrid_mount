@@ -23,7 +23,6 @@ use rustix::{
     mount::{MountFlags, mount},
 };
 use tracing::{Event, Subscriber};
-#[cfg(target_os = "android")]
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{
     EnvFilter,
