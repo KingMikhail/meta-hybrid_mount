@@ -1,8 +1,3 @@
-/**
- * Copyright 2025 Meta-Hybrid Mount Authors
- * SPDX-License-Identifier: GPL-3.0-or-later
- */
-
 import { createSignal, onMount, Show, For, createMemo } from 'solid-js';
 import { store } from '../lib/store';
 import { API } from '../lib/api';
@@ -10,14 +5,16 @@ import { ICONS } from '../lib/constants';
 import './InfoTab.css';
 import Skeleton from '../components/Skeleton';
 import '@material/web/button/filled-tonal-button.js';
+import '@material/web/button/text-button.js';
+import '@material/web/dialog/dialog.js';
 import '@material/web/icon/icon.js';
 import '@material/web/list/list.js';
 import '@material/web/list/list-item.js';
 
 const REPO_OWNER = 'YuzakiKokuban';
 const REPO_NAME = 'meta-hybrid_mount';
-const DONATE_LINK = `https://afdian.com/a/${REPO_OWNER}`;
 const TELEGRAM_LINK = 'https://t.me/hybridmountchat';
+const PAYPAL_LINK = 'https://www.paypal.me/LangQin280';
 const CACHE_KEY = 'hm_contributors_cache';
 const CACHE_DURATION = 1000 * 60 * 60;
 
@@ -36,6 +33,10 @@ export default function InfoTab() {
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal(false);
   const [version, setVersion] = createSignal(store.version);
+  const [activeQr, setActiveQr] = createSignal<string>('');
+  
+  let donateDialogRef: any;
+  let qrDialogRef: any;
 
   const isDev = createMemo(() => {
     return !/^v\d+\.\d+\.\d+$/.test(version());
@@ -46,7 +47,7 @@ export default function InfoTab() {
         const v = await API.getVersion();
         if (v) setVersion(v);
     } catch (e) {
-        console.error("Failed to fetch version", e);
+        console.error(e);
     }
     await fetchContributors();
   });
@@ -85,7 +86,7 @@ export default function InfoTab() {
                 return { ...user, bio: detail.bio, name: detail.name || user.login };
             }
         } catch (e) {
-            console.warn('Failed to fetch detail for', user.login);
+            console.warn(e);
         }
         return user;
       });
@@ -107,6 +108,24 @@ export default function InfoTab() {
   function handleLink(e: MouseEvent, url: string) {
     e.preventDefault();
     API.openLink(url);
+  }
+
+  function openDonate(e: MouseEvent) {
+    e.preventDefault();
+    donateDialogRef?.show();
+  }
+
+  function closeDonate() {
+    donateDialogRef?.close();
+  }
+
+  function openQr(path: string) {
+    setActiveQr(path);
+    qrDialogRef?.show();
+  }
+
+  function closeQr() {
+    qrDialogRef?.close();
   }
 
   return (
@@ -163,16 +182,6 @@ export default function InfoTab() {
         </md-filled-tonal-button>
 
         <md-filled-tonal-button 
-           class="action-btn donate-btn"
-           onClick={(e: MouseEvent) => handleLink(e, DONATE_LINK)}
-           role="button"
-           tabIndex={0}
-        >
-            <md-icon slot="icon"><svg viewBox="0 0 24 24"><path d={ICONS.donate} /></svg></md-icon>
-            {store.L.info.donate}
-        </md-filled-tonal-button>
-
-        <md-filled-tonal-button 
            class="action-btn"
            onClick={(e: MouseEvent) => handleLink(e, TELEGRAM_LINK)}
            role="button"
@@ -180,6 +189,16 @@ export default function InfoTab() {
         >
             <md-icon slot="icon"><svg viewBox="0 0 24 24"><path d={ICONS.telegram} /></svg></md-icon>
             Telegram
+        </md-filled-tonal-button>
+
+        <md-filled-tonal-button 
+           class="action-btn donate-btn"
+           onClick={openDonate}
+           role="button"
+           tabIndex={0}
+        >
+            <md-icon slot="icon"><svg viewBox="0 0 24 24"><path d={ICONS.donate} /></svg></md-icon>
+            {store.L.info.donate}
         </md-filled-tonal-button>
       </div>
 
@@ -225,6 +244,51 @@ export default function InfoTab() {
           </Show>
         </div>
       </div>
+
+      <md-dialog ref={donateDialogRef} class="donate-dialog">
+        <div slot="headline">Support Us</div>
+        <div slot="content" class="donate-content">
+          <div class="donate-section">
+            <div class="author-label">YuzakiKokuban</div>
+            <div class="donate-grid">
+               <md-filled-tonal-button onClick={() => openQr('/assets/donate/yuzaki_alipay.jpg')}>
+                 Alipay
+               </md-filled-tonal-button>
+               <md-filled-tonal-button onClick={() => openQr('/assets/donate/yuzaki_wechat.jpg')}>
+                 WeChat
+               </md-filled-tonal-button>
+               <md-filled-tonal-button onClick={() => openQr('/assets/donate/yuzaki_binance.jpg')}>
+                 Binance
+               </md-filled-tonal-button>
+               <md-filled-tonal-button onClick={(e: MouseEvent) => handleLink(e, PAYPAL_LINK)}>
+                 <md-icon slot="icon"><svg viewBox="0 0 24 24"><path d={ICONS.donate} /></svg></md-icon>
+                 PayPal
+               </md-filled-tonal-button>
+            </div>
+          </div>
+          
+          <div class="donate-divider"></div>
+
+          <div class="donate-section">
+            <div class="author-label">Tools-cx-app</div>
+            <div class="donate-grid">
+               <md-filled-tonal-button onClick={() => openQr('/assets/donate/tools_wechat.jpg')}>
+                 WeChat
+               </md-filled-tonal-button>
+            </div>
+          </div>
+        </div>
+        <div slot="actions">
+          <md-text-button onClick={closeDonate}>Close</md-text-button>
+        </div>
+      </md-dialog>
+
+      <md-dialog ref={qrDialogRef} class="qr-dialog" onClick={closeQr}>
+        <div slot="content" class="qr-content-wrapper">
+             <img src={activeQr()} alt="Scan QR Code" />
+        </div>
+      </md-dialog>
+
     </div>
   );
 }
