@@ -133,17 +133,14 @@ const RealAPI: AppAPI = {
     if (!ksuExec) return { size: '-', used: '-', percent: '0%', type: null };
     try {
       const stateFile = (PATHS as any).DAEMON_STATE || "/data/adb/meta-hybrid/run/daemon_state.json";
-      const cmd = `${PATHS.BINARY} storage`;
-      const { errno, stdout } = await ksuExec(cmd);
+      const { errno, stdout } = await ksuExec(`cat "${stateFile}"`);
       if (errno === 0 && stdout) {
         const state = JSON.parse(stdout);
         return {
-          type: state.type || 'unknown',
-          percent: `${state.usage_percent ?? 0}%`,
-          size: formatBytes(state.total_size ?? 0),
-          used: formatBytes(state.used_size ?? 0),
-          // @ts-ignore
-          supported_modes: state.supported_modes || ['tmpfs', 'ext4', 'erofs']
+          type: state.storage_mode || 'unknown',
+          percent: `${state.storage_percent ?? 0}%`,
+          size: formatBytes(state.storage_total ?? 0),
+          used: formatBytes(state.storage_used ?? 0)
         };
       }
     } catch (e) {}
