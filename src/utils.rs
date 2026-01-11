@@ -25,7 +25,7 @@ use rustix::{
 use tracing::{Event, Subscriber};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{
-    EnvFilter,
+    EnvFilter, Layer,
     fmt::{self, FmtContext, FormatEvent, FormatFields},
     layer::SubscriberExt,
     registry::LookupSpan,
@@ -65,63 +65,93 @@ where
     }
 }
 
-pub fn init_logging(verbose: bool, log_path: &Path) -> Result<WorkerGuard> {
-    let parent = log_path
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("Invalid log path parent"))?;
-    let file_name = log_path
-        .file_name()
-        .ok_or_else(|| anyhow::anyhow!("Invalid log filename"))?;
-
-    create_dir_all(parent)?;
-
-    let file_appender = tracing_appender::rolling::never(parent, file_name);
-    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+pub fn init_logging(
+    verbose: bool,
+    dry_run: bool,
+    log_path: Option<&Path>,
+) -> Result<Option<WorkerGuard>> {
     let filter = if verbose {
         EnvFilter::new("debug")
     } else {
         EnvFilter::new("info")
     };
 
-    let file_layer = fmt::layer()
-        .with_ansi(false)
-        .with_writer(non_blocking)
-        .event_format(SimpleFormatter);
+    let registry = tracing_subscriber::registry().with(filter);
 
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(file_layer)
-        .init();
-    tracing_log::LogTracer::init().ok();
+    let mut guard = None;
 
-    let log_path_buf = log_path.to_path_buf();
+    if dry_run {
+        let fmt_layer = fmt::layer()
+            .with_ansi(true)
+            .with_writer(std::io::stdout)
+            .with_target(false);
+        registry.with(fmt_layer).init();
+    } else {
+        let file_layer = if let Some(path) = log_path {
+            if let Some(parent) = path.parent() {
+                create_dir_all(parent)?;
+            }
+            let file_name = path
+                .file_name()
+                .ok_or_else(|| anyhow::anyhow!("Invalid log filename"))?;
+            let directory = path
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("Invalid log directory"))?;
 
-    std::panic::set_hook(Box::new(move |info| {
-        let msg = match info.payload().downcast_ref::<&str>() {
-            Some(s) => *s,
-            None => match info.payload().downcast_ref::<String>() {
-                Some(s) => &s[..],
-                None => "Box<Any>",
-            },
+            let file_appender = tracing_appender::rolling::never(directory, file_name);
+            let (non_blocking, g) = tracing_appender::non_blocking(file_appender);
+            guard = Some(g);
+
+            Some(
+                fmt::layer()
+                    .with_ansi(false)
+                    .with_writer(non_blocking)
+                    .event_format(SimpleFormatter),
+            )
+        } else {
+            None
         };
 
-        let location = info
-            .location()
-            .map(|l| format!("{}:{}", l.file(), l.line()))
-            .unwrap_or_default();
+        #[cfg(target_os = "android")]
+        let android_layer = tracing_android::layer("HybridMount").ok();
 
-        let error_msg = format!("\n[ERROR] PANIC: Thread crashed at {}: {}\n", location, msg);
+        #[cfg(not(target_os = "android"))]
+        let android_layer: Option<tracing_subscriber::fmt::Layer<_, _, _, _>> = None;
 
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&log_path_buf)
-        {
-            let _ = writeln!(file, "{}", error_msg);
-        }
+        registry.with(file_layer).with(android_layer).init();
+    }
 
-        eprintln!("{}", error_msg);
-    }));
+    tracing_log::LogTracer::init().ok();
+
+    if let Some(path) = log_path {
+        let log_path_buf = path.to_path_buf();
+        std::panic::set_hook(Box::new(move |info| {
+            let msg = match info.payload().downcast_ref::<&str>() {
+                Some(s) => *s,
+                None => match info.payload().downcast_ref::<String>() {
+                    Some(s) => &s[..],
+                    None => "Box<Any>",
+                },
+            };
+
+            let location = info
+                .location()
+                .map(|l| format!("{}:{}", l.file(), l.line()))
+                .unwrap_or_default();
+
+            let error_msg = format!("\n[ERROR] PANIC: Thread crashed at {}: {}\n", location, msg);
+
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&log_path_buf)
+            {
+                let _ = writeln!(file, "{}", error_msg);
+            }
+
+            eprintln!("{}", error_msg);
+        }));
+    }
 
     Ok(guard)
 }
@@ -227,7 +257,7 @@ pub fn lsetfilecon<P: AsRef<Path>>(path: P, con: &str) -> Result<()> {
             XattrFlags::empty(),
         ) {
             let io_err = std::io::Error::from(e);
-            log::debug!(
+            tracing::debug!(
                 "lsetfilecon: {} -> {} failed: {}",
                 path.as_ref().display(),
                 con,
@@ -311,7 +341,7 @@ pub fn random_kworker_name() -> String {
 pub fn is_xattr_supported(path: &Path) -> bool {
     let test_file = path.join(XATTR_TEST_FILE);
     if let Err(e) = write(&test_file, b"test") {
-        log::debug!("XATTR Check: Failed to create test file: {}", e);
+        tracing::debug!("XATTR Check: Failed to create test file: {}", e);
         return false;
     }
     let result = lsetfilecon(&test_file, "u:object_r:system_file:s0");
@@ -323,7 +353,7 @@ pub fn is_xattr_supported(path: &Path) -> bool {
 pub fn is_overlay_xattr_supported(path: &Path) -> bool {
     let test_file = path.join(".overlay_xattr_test");
     if let Err(e) = write(&test_file, b"test") {
-        log::debug!("XATTR Check: Failed to create test file: {}", e);
+        tracing::debug!("XATTR Check: Failed to create test file: {}", e);
         return false;
     }
 
@@ -348,7 +378,7 @@ pub fn is_overlay_xattr_supported(path: &Path) -> bool {
         );
         if ret != 0 {
             let err = std::io::Error::last_os_error();
-            log::debug!("XATTR Check: trusted.* xattr not supported: {}", err);
+            tracing::debug!("XATTR Check: trusted.* xattr not supported: {}", err);
             false
         } else {
             true
@@ -414,7 +444,7 @@ pub fn mount_image(image_path: &Path, target: &Path) -> Result<()> {
 }
 
 pub fn repair_image(image_path: &Path) -> Result<()> {
-    log::info!("Running e2fsck on {}", image_path.display());
+    tracing::info!("Running e2fsck on {}", image_path.display());
     let status = Command::new("e2fsck")
         .args(["-y", "-f"])
         .arg(image_path)
@@ -569,7 +599,7 @@ pub fn select_temp_dir() -> Result<PathBuf> {
     for path_str in TMPFS_CANDIDATES {
         let path = Path::new(path_str);
         if is_ok_empty(path) {
-            log::info!("Selected dynamic temp root: {}", path.display());
+            tracing::info!("Selected dynamic temp root: {}", path.display());
             return Ok(path.to_path_buf());
         }
     }
@@ -582,7 +612,7 @@ pub fn select_temp_dir() -> Result<PathBuf> {
 #[allow(dead_code)]
 pub fn cleanup_temp_dir(temp_dir: &Path) {
     if let Err(e) = remove_dir_all(temp_dir) {
-        log::warn!(
+        tracing::warn!(
             "Failed to clean up temp dir {}: {:#}",
             temp_dir.display(),
             e
@@ -613,7 +643,7 @@ pub fn create_erofs_image(src_dir: &Path, image_path: &Path) -> Result<()> {
         std::ffi::OsStr::new("mkfs.erofs")
     };
 
-    log::info!("Packing EROFS image: {}", image_path.display());
+    tracing::info!("Packing EROFS image: {}", image_path.display());
 
     let output = Command::new(cmd_name)
         .arg("-z")
@@ -629,7 +659,7 @@ pub fn create_erofs_image(src_dir: &Path, image_path: &Path) -> Result<()> {
         let s = String::from_utf8_lossy(bytes);
         for line in s.lines() {
             if !line.trim().is_empty() {
-                log::debug!("{}", line);
+                tracing::debug!("{}", line);
             }
         }
     };
@@ -641,7 +671,7 @@ pub fn create_erofs_image(src_dir: &Path, image_path: &Path) -> Result<()> {
         bail!("Failed to create EROFS image");
     }
 
-    log::info!("Build Completed.");
+    tracing::info!("Build Completed.");
     let _ = fs::set_permissions(image_path, fs::Permissions::from_mode(0o644));
     lsetfilecon(image_path, "u:object_r:ksu_file:s0")?;
     Ok(())

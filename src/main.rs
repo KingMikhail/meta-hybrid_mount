@@ -88,7 +88,7 @@ fn main() -> Result<()> {
     if !config.dry_run
         && let Err(e) = granary::engage_ratoon_protocol()
     {
-        log::error!("Failed to engage Ratoon Protocol: {}", e);
+        tracing::error!("Failed to engage Ratoon Protocol: {}", e);
     }
 
     if utils::check_zygisksu_enforce_status() {
@@ -108,42 +108,43 @@ fn main() -> Result<()> {
         }
     }
 
-    if config.dry_run {
-        env_logger::builder()
-            .filter_level(if config.verbose {
-                log::LevelFilter::Debug
-            } else {
-                log::LevelFilter::Info
-            })
-            .init();
+    let log_path = if config.dry_run {
+        None
+    } else {
+        Some(Path::new(defs::DAEMON_LOG_FILE))
+    };
 
-        log::info!(":: DRY-RUN / DIAGNOSTIC MODE ::");
+    let _log_guard = utils::init_logging(config.verbose, config.dry_run, log_path)
+        .context("Failed to initialize logging")?;
+
+    if config.dry_run {
+        tracing::info!(":: DRY-RUN / DIAGNOSTIC MODE ::");
 
         let module_list =
             inventory::scan(&config.moduledir, &config).context("Inventory scan failed")?;
 
-        log::info!(">> Inventory: Found {} modules", module_list.len());
+        tracing::info!(">> Inventory: Found {} modules", module_list.len());
 
         let plan = planner::generate(&config, &module_list, &config.moduledir)
             .context("Plan generation failed")?;
 
         plan.print_visuals();
 
-        log::info!(">> Analyzing File Conflicts...");
+        tracing::info!(">> Analyzing File Conflicts...");
 
         let report = plan.analyze_conflicts();
 
         if report.details.is_empty() {
-            log::info!("   No file conflicts detected. Clean.");
+            tracing::info!("   No file conflicts detected. Clean.");
         } else {
-            log::warn!("!! DETECTED {} FILE CONFLICTS !!", report.details.len());
+            tracing::warn!("!! DETECTED {} FILE CONFLICTS !!", report.details.len());
 
             let winnowed = winnow::sift_conflicts(report.details, &config.winnowing);
 
             for c in winnowed {
                 let status = if c.is_forced { "(FORCED)" } else { "" };
 
-                log::warn!(
+                tracing::warn!(
                     "   [{}] {} <== {:?} >> Selected: {} {}",
                     "CONFLICT",
                     c.path.display(),
@@ -154,7 +155,7 @@ fn main() -> Result<()> {
             }
         }
 
-        log::info!(">> Running System Diagnostics...");
+        tracing::info!(">> Running System Diagnostics...");
 
         let issues = executor::diagnose_plan(&plan);
 
@@ -163,60 +164,57 @@ fn main() -> Result<()> {
         for issue in issues {
             match issue.level {
                 core::executor::DiagnosticLevel::Critical => {
-                    log::error!("[CRITICAL][{}] {}", issue.context, issue.message);
+                    tracing::error!("[CRITICAL][{}] {}", issue.context, issue.message);
 
                     critical_count += 1;
                 }
                 core::executor::DiagnosticLevel::Warning => {
-                    log::warn!("[WARN][{}] {}", issue.context, issue.message);
+                    tracing::warn!("[WARN][{}] {}", issue.context, issue.message);
                 }
                 core::executor::DiagnosticLevel::Info => {
-                    log::info!("[INFO][{}] {}", issue.context, issue.message);
+                    tracing::info!("[INFO][{}] {}", issue.context, issue.message);
                 }
             }
         }
 
         if critical_count > 0 {
-            log::error!(
+            tracing::error!(
                 ">> ❌ DIAGNOSTICS FAILED: {} critical issues found.",
                 critical_count
             );
 
-            log::error!(">> Mounting now would likely result in a bootloop.");
+            tracing::error!(">> Mounting now would likely result in a bootloop.");
 
             std::process::exit(1);
         } else {
-            log::info!(">> ✅ Diagnostics passed. System looks healthy.");
+            tracing::info!(">> ✅ Diagnostics passed. System looks healthy.");
         }
 
         return Ok(());
     }
 
-    let _log_guard = utils::init_logging(config.verbose, Path::new(defs::DAEMON_LOG_FILE))
-        .context("Failed to initialize logging")?;
-
     let camouflage_name = utils::random_kworker_name();
 
     if let Err(e) = utils::camouflage_process(&camouflage_name) {
-        log::warn!("Failed to camouflage process: {:#}", e);
+        tracing::warn!("Failed to camouflage process: {:#}", e);
     }
 
-    log::info!(">> Initializing Meta-Hybrid Mount Daemon...");
+    tracing::info!(">> Initializing Meta-Hybrid Mount Daemon...");
 
-    log::debug!("Process camouflaged as: {}", camouflage_name);
+    tracing::debug!("Process camouflaged as: {}", camouflage_name);
 
     if let Ok(version) = std::fs::read_to_string("/proc/sys/kernel/osrelease") {
-        log::debug!("Kernel Version: {}", version.trim());
+        tracing::debug!("Kernel Version: {}", version.trim());
     }
 
     if let Some(ver) = ksu::version() {
-        log::info!("KernelSU Version: {}", ver);
+        tracing::info!("KernelSU Version: {}", ver);
     } else {
-        log::warn!("KernelSU not detected or driver not accessible!");
+        tracing::warn!("KernelSU not detected or driver not accessible!");
     }
 
     if config.disable_umount {
-        log::warn!("!! Umount is DISABLED via config.");
+        tracing::warn!("!! Umount is DISABLED via config.");
     }
 
     utils::ensure_dir_exists(defs::RUN_DIR)
@@ -227,7 +225,7 @@ fn main() -> Result<()> {
     let img_path = Path::new(defs::BASE_DIR).join("modules.img");
 
     if let Err(e) = granary::create_silo(&config, "Boot Backup", "Automatic Pre-Mount") {
-        log::warn!("Granary: Failed to create boot snapshot: {}", e);
+        tracing::warn!("Granary: Failed to create boot snapshot: {}", e);
     }
 
     OryzaEngine::new(config)
