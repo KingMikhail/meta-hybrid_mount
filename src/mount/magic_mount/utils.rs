@@ -36,7 +36,7 @@ where
     P: AsRef<Path>,
 {
     let (path, work_dir_path) = (path.as_ref(), work_dir_path.as_ref());
-    log::debug!(
+    tracing::debug!(
         "creating tmpfs skeleton for {} at {}",
         path.display(),
         work_dir_path.display()
@@ -66,7 +66,7 @@ where
     let file_type = entry.file_type()?;
 
     if file_type.is_file() {
-        log::debug!(
+        tracing::debug!(
             "mount mirror file {} -> {}",
             path.display(),
             work_dir_path.display()
@@ -74,7 +74,7 @@ where
         fs::File::create(&work_dir_path)?;
         mount_bind(&path, &work_dir_path)?;
     } else if file_type.is_dir() {
-        log::debug!(
+        tracing::debug!(
             "mount mirror dir {} -> {}",
             path.display(),
             work_dir_path.display()
@@ -92,7 +92,7 @@ where
             mount_mirror(&path, &work_dir_path, &entry)?;
         }
     } else if file_type.is_symlink() {
-        log::debug!(
+        tracing::debug!(
             "create mirror symlink {} -> {}",
             path.display(),
             work_dir_path.display()
@@ -113,7 +113,7 @@ pub fn collect_module_files(
     let module_root = module_dir;
     let mut has_file = HashSet::new();
 
-    log::debug!("begin collect module files: {}", module_root.display());
+    tracing::debug!("begin collect module files: {}", module_root.display());
 
     for entry in module_root.read_dir()?.flatten() {
         if !entry.file_type()?.is_dir() {
@@ -121,16 +121,16 @@ pub fn collect_module_files(
         }
 
         let id = entry.file_name().to_str().unwrap().to_string();
-        log::debug!("processing new module: {id}");
+        tracing::debug!("processing new module: {id}");
 
         if !need_id.contains(&id) {
-            log::debug!("module {id} was blocked.");
+            tracing::debug!("module {id} was blocked.");
             continue;
         }
 
         let prop = entry.path().join("module.prop");
         if !prop.exists() {
-            log::debug!("skipped module {id}, because not found module.prop");
+            tracing::debug!("skipped module {id}, because not found module.prop");
             continue;
         }
         let string = fs::read_to_string(prop)?;
@@ -146,7 +146,7 @@ pub fn collect_module_files(
             || entry.path().join(REMOVE_FILE_NAME).exists()
             || entry.path().join(SKIP_MOUNT_FILE_NAME).exists()
         {
-            log::debug!("skipped module {id}, due to disable/remove/skip_mount");
+            tracing::debug!("skipped module {id}, due to disable/remove/skip_mount");
             continue;
         }
 
@@ -160,14 +160,14 @@ pub fn collect_module_files(
                 modified = true;
                 break;
             }
-            log::debug!("{id} due not modify {p}");
+            tracing::debug!("{id} due not modify {p}");
         }
 
         if !modified {
             continue;
         }
 
-        log::debug!("collecting {}", entry.path().display());
+        tracing::debug!("collecting {}", entry.path().display());
 
         for p in partitions {
             if !entry.path().join(&p).exists() {
@@ -212,7 +212,7 @@ pub fn collect_module_files(
             if path_of_root.is_dir() && (!require_symlink || path_of_system.is_symlink()) {
                 let name = partition.clone();
                 if let Some(node) = system.children.remove(&name) {
-                    log::debug!("attach extra partition '{name}' to root");
+                    tracing::debug!("attach extra partition '{name}' to root");
                     root.children.insert(name, node);
                 }
             }
@@ -232,7 +232,7 @@ where
     let src_symlink = read_link(src.as_ref())?;
     symlink(&src_symlink, dst.as_ref())?;
     lsetfilecon(dst.as_ref(), lgetfilecon(src.as_ref())?.as_str())?;
-    log::debug!(
+    tracing::debug!(
         "clone symlink {} -> {}({})",
         dst.as_ref().display(),
         dst.as_ref().display(),

@@ -1,5 +1,5 @@
 use std::{
-    ffi::{CStr, CString},
+    ffi::CString,
     fs::create_dir,
     os::fd::AsFd,
     path::{Path, PathBuf},
@@ -31,7 +31,7 @@ pub fn mount_overlayfs(
         .chain(std::iter::once(lowest))
         .collect::<Vec<_>>()
         .join(":");
-    log::info!(
+    tracing::info!(
         "mount overlayfs on {:?}, lowerdir={}, upperdir={:?}, workdir={:?}",
         dest.as_ref(),
         lowerdir_config,
@@ -67,7 +67,7 @@ pub fn mount_overlayfs(
     })();
 
     if let Err(e) = result {
-        log::warn!("fsopen mount failed: {:#}, fallback to mount", e);
+        tracing::warn!("fsopen mount failed: {:#}, fallback to mount", e);
         let mut data = format!("lowerdir={lowerdir_config}");
         if let (Some(upperdir), Some(workdir)) = (upperdir, workdir) {
             data = format!("{data},upperdir={upperdir},workdir={workdir}");
@@ -97,7 +97,7 @@ pub fn mount_devpts(dest: impl AsRef<Path>) -> Result<()> {
 }
 
 pub fn mount_tmpfs(dest: impl AsRef<Path>) -> Result<()> {
-    log::info!("mount tmpfs on {}", dest.as_ref().display());
+    tracing::info!("mount tmpfs on {}", dest.as_ref().display());
     match fsopen("tmpfs", FsOpenFlags::FSOPEN_CLOEXEC) {
         Result::Ok(fs) => {
             let fs = fs.as_fd();
@@ -129,13 +129,13 @@ pub fn mount_tmpfs(dest: impl AsRef<Path>) -> Result<()> {
     mount_change(dest.as_ref(), MountPropagationFlags::PRIVATE).context("make tmpfs private")?;
     let pts_dir = format!("{}/pts", dest.as_ref().display());
     if let Err(e) = mount_devpts(pts_dir) {
-        log::warn!("do devpts mount failed: {}", e);
+        tracing::warn!("do devpts mount failed: {}", e);
     }
     Ok(())
 }
 
 pub fn bind_mount(from: impl AsRef<Path>, to: impl AsRef<Path>) -> Result<()> {
-    log::info!(
+    tracing::info!(
         "bind mount {} -> {}",
         from.as_ref().display(),
         to.as_ref().display()
@@ -200,7 +200,7 @@ fn mount_overlay_child(
     }
     // merge modules and stock
     if let Err(e) = mount_overlayfs(&lower_dirs, stock_root, None, None, mount_point) {
-        log::warn!("failed: {:#}, fallback to bind mount", e);
+        tracing::warn!("failed: {:#}, fallback to bind mount", e);
         bind_mount(stock_root, mount_point)?;
     }
     Ok(())
@@ -212,7 +212,7 @@ pub fn mount_overlay(
     workdir: Option<PathBuf>,
     upperdir: Option<PathBuf>,
 ) -> Result<()> {
-    log::info!("mount overlay for {}", root);
+    tracing::info!("mount overlay for {}", root);
     std::env::set_current_dir(root).with_context(|| format!("failed to chdir to {root}"))?;
     let stock_root = ".";
 
@@ -243,7 +243,7 @@ pub fn mount_overlay(
             continue;
         }
         if let Err(e) = mount_overlay_child(mount_point, &relative, module_roots, &stock_root) {
-            log::warn!(
+            tracing::warn!(
                 "failed to mount overlay for child {}: {:#}, revert",
                 mount_point,
                 e

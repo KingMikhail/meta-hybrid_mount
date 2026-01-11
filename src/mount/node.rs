@@ -11,7 +11,6 @@ use std::{
 
 use anyhow::Result;
 use extattr::lgetxattr;
-use rustix::path::Arg;
 
 use crate::defs::{REPLACE_DIR_FILE_NAME, REPLACE_DIR_XATTR};
 
@@ -125,7 +124,7 @@ impl Node {
             if let Some(file_type) = file_type {
                 let replace = file_type == NodeFileType::Directory && Self::dir_is_replace(&path);
                 if replace {
-                    log::debug!("{} need replace", path.display());
+                    tracing::debug!("{} need replace", path.display());
                 }
                 return Some(Self {
                     name: name.to_string(),

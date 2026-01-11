@@ -1,14 +1,12 @@
-mod overlayfs;
+pub mod overlayfs;
 pub mod utils;
 
 use std::{
     collections::{HashMap, HashSet},
-    fs,
     path::Path,
 };
 
 use anyhow::{Result, bail};
-use rustix::path::Arg;
 
 use crate::defs;
 
@@ -42,7 +40,7 @@ pub fn mount_systemlessly(module_id: HashSet<String>, extra_partitions: &[String
             let disabled = real_module_path.join(defs::DISABLE_FILE_NAME).exists();
 
             if disabled {
-                log::info!("module: {} is disabled, ignore!", module.display());
+                tracing::info!("module: {} is disabled, ignore!", module.display());
                 continue;
             }
             if !module_id.contains(&module_name.as_str()?.to_string()) {
@@ -52,7 +50,7 @@ pub fn mount_systemlessly(module_id: HashSet<String>, extra_partitions: &[String
 
         let skip_mount = module.join(defs::SKIP_MOUNT_FILE_NAME).exists();
         if skip_mount {
-            log::info!("module: {} skip_mount exist, skip!", module.display());
+            tracing::info!("module: {} skip_mount exist, skip!", module.display());
             continue;
         }
 
@@ -75,13 +73,13 @@ pub fn mount_systemlessly(module_id: HashSet<String>, extra_partitions: &[String
 
     // mount /system first
     if let Err(e) = mount_partition("system", &system_lowerdir) {
-        log::warn!("mount system failed: {:#}", e);
+        tracing::warn!("mount system failed: {:#}", e);
     }
 
     // mount other partitions
     for (k, v) in partition_lowerdir {
         if let Err(e) = mount_partition(k.clone(), &v) {
-            log::warn!("mount {k} failed: {:#}", e);
+            tracing::warn!("mount {k} failed: {:#}", e);
         }
     }
 
@@ -94,7 +92,7 @@ where
 {
     let partition_name = partition_name.as_ref();
     if lowerdir.is_empty() {
-        log::warn!("partition: {partition_name} lowerdir is empty");
+        tracing::warn!("partition: {partition_name} lowerdir is empty");
         return Ok(());
     }
 
@@ -102,7 +100,7 @@ where
 
     // if /partition is a symlink and linked to /system/partition, then we don't need to overlay it separately
     if Path::new(&partition).read_link().is_ok() {
-        log::warn!("partition: {partition} is a symlink");
+        tracing::warn!("partition: {partition} is a symlink");
         return Ok(());
     }
 
