@@ -249,6 +249,7 @@ export default function ConfigTab() {
                     </div>
                     <div class="card-text">
                         <span class="card-title">{store.L.config?.granarySettings || "Granary Settings"}</span>
+                        <span class="card-desc">{store.L.config?.granarySettingsDesc || "Backup retention strategy"}</span>
                     </div>
                 </div>
 
