@@ -7,10 +7,7 @@ use anyhow::Result;
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
-use crate::{
-    core::inventory::{Module, MountMode},
-    defs, utils,
-};
+use crate::{core::inventory::Module, defs, utils};
 
 pub fn perform_sync(modules: &[Module], target_base: &Path) -> Result<()> {
     tracing::info!("Starting smart module sync to {}", target_base.display());
