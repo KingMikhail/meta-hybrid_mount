@@ -1,3 +1,6 @@
+// Copyright 2025 Meta-Hybrid Mount Authors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::{collections::HashSet, fs, path::Path};
 
 use anyhow::Result;
@@ -23,26 +26,43 @@ pub fn perform_sync(modules: &[Module], target_base: &Path) -> Result<()> {
         if has_content && should_sync(&module.source_path, &dst) {
             tracing::info!("Syncing module: {} (Updated/New)", module.id);
 
-            if dst.exists()
-                && let Err(e) = fs::remove_dir_all(&dst)
-            {
-                tracing::warn!("Failed to clean target dir for {}: {}", module.id, e);
+            let tmp_dst = target_base.join(format!(".tmp_{}", module.id));
+
+            if tmp_dst.exists() {
+                let _ = fs::remove_dir_all(&tmp_dst);
             }
 
-            if let Err(e) = utils::sync_dir(&module.source_path, &dst, true) {
+            if let Err(e) = utils::sync_dir(&module.source_path, &tmp_dst, true) {
                 tracing::error!("Failed to sync module {}: {}", module.id, e);
-            } else {
-                if let Err(e) = utils::prune_empty_dirs(&dst) {
-                    tracing::warn!("Failed to prune empty dirs for {}: {}", module.id, e);
-                }
+                let _ = fs::remove_dir_all(&tmp_dst);
+                return;
+            }
 
-                if let Err(e) = apply_overlay_opaque_flags(&dst) {
+            if let Err(e) = utils::prune_empty_dirs(&tmp_dst) {
+                tracing::warn!("Failed to prune empty dirs for {}: {}", module.id, e);
+            }
+
+            if let Err(e) = apply_overlay_opaque_flags(&tmp_dst) {
+                tracing::warn!(
+                    "Failed to apply overlay opaque xattrs for {}: {}",
+                    module.id,
+                    e
+                );
+            }
+
+            if dst.exists() {
+                if let Err(e) = fs::remove_dir_all(&dst) {
                     tracing::warn!(
-                        "Failed to apply overlay opaque xattrs for {}: {}",
+                        "Failed to clean existing target dir for {}: {}",
                         module.id,
                         e
                     );
                 }
+            }
+
+            if let Err(e) = fs::rename(&tmp_dst, &dst) {
+                tracing::error!("Failed to commit atomic sync for {}: {}", module.id, e);
+                let _ = fs::remove_dir_all(&tmp_dst);
             }
         } else {
             tracing::debug!("Skipping module: {}", module.id);

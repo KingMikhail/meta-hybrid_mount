@@ -55,6 +55,11 @@ fn load_config(cli: &Cli) -> Result<Config> {
 }
 
 fn main() -> Result<()> {
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(4)
+        .build_global()
+        .unwrap();
+
     let cli = Cli::parse();
 
     if let Some(command) = &cli.command {
@@ -223,7 +228,7 @@ fn main() -> Result<()> {
         tracing::warn!("Failed to camouflage process: {:#}", e);
     }
 
-    tracing::info!(">> Initializing Meta-Hybrid Mount Daemon...");
+    tracing::info!(">> Initializing Hybrid Mount Daemon...");
 
     tracing::debug!("Process camouflaged as: {}", camouflage_name);
 
