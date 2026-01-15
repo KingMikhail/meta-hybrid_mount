@@ -1,10 +1,12 @@
-## v2.0.51
+## v2.0.6
 
-Changes since v2.0.5:
-* fix: resolve clippy collapsible_if error in sync logic
-* feat: implement atomic sync and limit thread concurrency
-* feat: prune empty directories after module sync
-* fix: remove unused import of bail from anyhow
-* webui: fix modules filter
-* Refactor: Implement robust try_umount fallback strategy
-* chore(release): bump version to v2.0.5 [skip ci]
+Changes since v2.0.51:
+* fix: make clippy happy
+* refactor: drop winnowing system entirely
+* Revert "fix: suppress EPERM errors during umount"
+* chore: update license headers [skip ci]
+* fix: suppress EPERM errors during umount
+* fix: make clippy happy
+* feat: deduplicate unmount requests to optimize performance
+* chore(deps): bump zip from 7.0.0 to 7.1.0 (#128)
+* chore(release): bump version to v2.0.51 [skip ci]
