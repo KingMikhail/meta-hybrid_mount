@@ -27,10 +27,6 @@ rm -rf "$MODPATH/binaries"
 rm -rf "$MODPATH/system"
 BASE_DIR="/data/adb/meta-hybrid"
 mkdir -p "$BASE_DIR"
-if [ ! -f "$BASE_DIR/config.toml" ]; then
-  ui_print "- Installing default config"
-  cat "$MODPATH/config.toml" >"$BASE_DIR/config.toml"
-fi
 
 KEY_volume_detect() {
   ui_print " "
@@ -66,7 +62,16 @@ KEY_volume_detect() {
   sed -i '/default_mode/d' "$BASE_DIR/config.toml"
   echo "default_mode = \"$chosen_mode\"" >> "$BASE_DIR/config.toml"
 }
-KEY_volume_detect
+
+if [ ! -f "$BASE_DIR/config.toml" ]; then
+  ui_print "- Fresh installation detected"
+  ui_print "- Installing default config..."
+  cat "$MODPATH/config.toml" >"$BASE_DIR/config.toml"
+  KEY_volume_detect
+else
+  ui_print "- Existing config found"
+  ui_print "- Skipping setup wizard to preserve settings"
+fi
 
 set_perm_recursive "$MODPATH" 0 0 0755 0644
 set_perm "$BIN_TARGET" 0 0 0755
