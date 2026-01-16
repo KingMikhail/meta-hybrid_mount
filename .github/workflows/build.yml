@@ -76,7 +76,7 @@ jobs:
           cargo run -p xtask -- build --release --arch arm64
 
       - name: Notify Telegram (CI)
-        if: success()
+        if: success() && github.event_name != 'pull_request'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
