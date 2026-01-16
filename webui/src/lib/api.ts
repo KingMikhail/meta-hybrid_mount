@@ -112,14 +112,18 @@ const RealAPI: AppAPI = {
     return [];
   },
   saveModules: async (_modules: Module[]): Promise<void> => { return; },
+  
+  // Reverted to standard command execution
   saveModuleRules: async (moduleId: string, rules: ModuleRules): Promise<void> => {
     if (!ksuExec) throw new Error("No KSU environment");
     const jsonStr = JSON.stringify(rules);
     const hexPayload = stringToHex(jsonStr);
+    // Updated to use the newly implemented backend command
     const cmd = `${PATHS.BINARY} save-module-rules --module "${moduleId}" --payload ${hexPayload}`;
     const { errno, stderr } = await ksuExec(cmd);
     if (errno !== 0) throw new Error(`Failed to save rules: ${stderr}`);
   },
+
   readLogs: async (logPath?: string, lines = 1000): Promise<string> => {
     if (!ksuExec) return "";
     const f = logPath || (PATHS as any).DAEMON_LOG || "/data/adb/meta-hybrid/daemon.log";

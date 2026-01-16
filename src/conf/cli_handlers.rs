@@ -90,6 +90,39 @@ pub fn handle_save_config(cli: &Cli, payload: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn handle_save_module_rules(module_id: &str, payload: &str) -> Result<()> {
+    let json_bytes = (0..payload.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&payload[i..i + 2], 16))
+        .collect::<Result<Vec<u8>, _>>()
+        .context("Failed to decode hex payload")?;
+
+    // Validate JSON structure by parsing it into ModuleRules
+    let _rules: inventory::ModuleRules =
+        serde_json::from_slice(&json_bytes).context("Failed to parse module rules JSON")?;
+
+    // Based on src/core/inventory.rs logic
+    let rules_dir = Path::new("/data/adb/meta-hybrid/rules");
+
+    if !rules_dir.exists() {
+        std::fs::create_dir_all(rules_dir).with_context(|| {
+            format!(
+                "Failed to create rules directory at {}",
+                rules_dir.display()
+            )
+        })?;
+    }
+
+    let rule_file = rules_dir.join(format!("{}.json", module_id));
+
+    std::fs::write(&rule_file, json_bytes)
+        .with_context(|| format!("Failed to write rule file to {}", rule_file.display()))?;
+
+    println!("Module rules saved for {}", module_id);
+
+    Ok(())
+}
+
 pub fn handle_storage() -> Result<()> {
     storage::print_status().context("Failed to retrieve storage status")
 }
