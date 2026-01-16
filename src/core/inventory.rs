@@ -29,12 +29,13 @@ pub struct ModuleRules {
 
 impl ModuleRules {
     pub fn load(module_dir: &Path, module_id: &str, cfg: &config::Config) -> Self {
-        let mut rules = ModuleRules::default();
-
-        // 1. Apply global default from config
-        rules.default_mode = match cfg.default_mode {
-            config::DefaultMode::Overlay => MountMode::Overlay,
-            config::DefaultMode::Magic => MountMode::Magic,
+        // Fix: Use struct update syntax to satisfy clippy::field_reassign_with_default
+        let mut rules = ModuleRules {
+            default_mode: match cfg.default_mode {
+                config::DefaultMode::Overlay => MountMode::Overlay,
+                config::DefaultMode::Magic => MountMode::Magic,
+            },
+            ..Default::default()
         };
 
         // Helper struct for partial loading to avoid overwriting defaults with serde defaults
