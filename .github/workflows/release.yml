@@ -79,6 +79,12 @@ jobs:
       - name: Install ksusig
         run: cargo install --git https://github.com/Kernel-SU/ksusig
 
+      - name: Install build dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y gcc-multilib
+          cargo install cargo-ndk --locked
+
       - name: Build Release Package
         env:
           META_HYBRID_SIGN_KEY: ${{ secrets.SIGNING_KEY }}

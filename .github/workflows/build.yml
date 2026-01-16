@@ -71,6 +71,12 @@ jobs:
           sed -i "s/^version=.*/version=$CI_VER/" module/module.prop
           sed -i "s/^versionCode=.*/versionCode=$CI_CODE/" module/module.prop
 
+      - name: Install build dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y gcc-multilib
+          cargo install cargo-ndk --locked
+
       - name: Build All
         run: |
           cargo xtask build --release --arch arm64
