@@ -1,6 +1,3 @@
-// Copyright 2025 Meta-Hybrid Mount Authors
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -63,11 +60,9 @@ enum Commands {
         #[arg(long, value_enum)]
         arch: Option<Arch>,
 
-        /// Path to the encrypted private key (default: private.enc)
         #[arg(long, default_value = "private.enc")]
         key_enc: PathBuf,
 
-        /// Path to the certificate (default: cert.pem)
         #[arg(long, default_value = "cert.pem")]
         cert: PathBuf,
     },
@@ -141,7 +136,7 @@ fn build_full(
     let archs_to_build = if let Some(selected) = target_arch {
         vec![selected]
     } else {
-        vec![Arch::Arm64, Arch::X86_64]
+        vec![Arch::Arm64, Arch::Arm, Arch::X86_64]
     };
 
     for arch in archs_to_build {
