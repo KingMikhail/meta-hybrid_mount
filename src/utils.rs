@@ -265,10 +265,10 @@ pub fn is_overlay_xattr_supported(path: &Path) -> bool {
     #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         let mut buf = [0u8; 1];
-        match rustix::fs::lgetxattr(path, "user.hybrid_check", &mut buf) {
-            Err(rustix::io::Errno::OPNOTSUPP) => false,
-            _ => true,
-        }
+        !matches!(
+            rustix::fs::lgetxattr(path, "user.hybrid_check", &mut buf),
+            Err(rustix::io::Errno::OPNOTSUPP)
+        )
     }
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
     true
