@@ -30,7 +30,6 @@ const SELINUX_XATTR: &str = "security.selinux";
 const OVERLAY_OPAQUE_XATTR: &str = "trusted.overlay.opaque";
 const CONTEXT_SYSTEM: &str = "u:object_r:system_file:s0";
 const CONTEXT_VENDOR: &str = "u:object_r:vendor_file:s0";
-const OVERLAY_TEST_XATTR: &str = "trusted.overlay.test";
 
 pub static KSU: AtomicBool = AtomicBool::new(false);
 
@@ -281,7 +280,7 @@ pub fn is_overlay_xattr_supported(path: &Path) -> bool {
     {
         let mut buf = [0u8; 1];
         match rustix::fs::lgetxattr(path, "user.hybrid_check", &mut buf) {
-            Err(rustix::io::Errno::OPNOTSUPP) | Err(rustix::io::Errno::NOTSUP) => false,
+            Err(rustix::io::Errno::OPNOTSUPP) => false,
             _ => true,
         }
     }
