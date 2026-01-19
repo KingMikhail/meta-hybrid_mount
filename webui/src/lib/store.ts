@@ -1,4 +1,4 @@
-import { createSignal, createMemo, createEffect } from "solid-js";
+import { createSignal, createMemo, createEffect, createRoot } from "solid-js";
 import { API } from "./api";
 import { DEFAULT_CONFIG, DEFAULT_SEED } from "./constants";
 import { APP_VERSION } from "./constants_gen";
@@ -18,7 +18,6 @@ import type {
 
 const localeModules = import.meta.glob("../locales/*.json", { eager: true });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type LocaleDict = any;
 
 export interface LogEntry {
@@ -33,7 +32,7 @@ const createGlobalStore = () => {
   const [themeStyle, setThemeStyleSignal] =
     createSignal<ThemeStyle>("TONAL_SPOT");
   const [isSystemDark, setIsSystemDark] = createSignal(false);
-  const [lang, setLangSignal] = createSignal("en");
+  const [lang, setLangSignal] = createSignal("en-US");
   const [seed, setSeed] = createSignal<string | null>(DEFAULT_SEED);
   const [loadedLocale, setLoadedLocale] = createSignal<unknown>(null);
 
@@ -84,15 +83,17 @@ const createGlobalStore = () => {
   const availableLanguages: LanguageOption[] = Object.entries(localeModules)
     .map(([path, mod]: [string, unknown]) => {
       const match = path.match(/\/([^/]+)\.json$/);
-      const code = match ? match[1] : "en";
+      // Fix: Default fallback to en-US
+      const code = match ? match[1] : "en-US";
       const name =
         (mod as { default?: { lang?: { display?: string } } }).default?.lang
           ?.display || code.toUpperCase();
       return { code, name };
     })
     .sort((a, b) => {
-      if (a.code === "en") return -1;
-      if (b.code === "en") return 1;
+      // Fix: Sort en-US to top
+      if (a.code === "en-US") return -1;
+      if (b.code === "en-US") return 1;
       return a.name.localeCompare(b.name);
     });
 
@@ -155,7 +156,8 @@ const createGlobalStore = () => {
     if (match) {
       setLoadedLocale(match[1]);
     } else {
-      setLoadedLocale(localeModules["../locales/en.json"]);
+      // Fix: Fallback to en-US.json which exists
+      setLoadedLocale(localeModules["../locales/en-US.json"]);
     }
   }
 
@@ -178,7 +180,8 @@ const createGlobalStore = () => {
   }
 
   async function init() {
-    const savedLang = localStorage.getItem("lang") || "en";
+    // Fix: Default to en-US
+    const savedLang = localStorage.getItem("lang") || "en-US";
     setLangSignal(savedLang);
     await loadLocale(savedLang);
 
@@ -434,4 +437,4 @@ const createGlobalStore = () => {
   };
 };
 
-export const store = createGlobalStore();
+export const store = createRoot(createGlobalStore);
