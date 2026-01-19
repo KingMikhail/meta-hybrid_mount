@@ -23,8 +23,7 @@
     "modules": "Modules",
     "logs": "Logs",
     "info": "Info",
-    "granary": "Granary",
-    "winnowing": "Winnowing"
+    "granary": "Granary"
   },
   "status": {
     "storageTitle": "Storage",
@@ -52,15 +51,11 @@
     "verboseLabel": "Verbose Log",
     "verboseOff": "Off",
     "verboseOn": "On",
-    "dryRun": "Dry Run",
     "forceExt4": "Ext4 Mode",
     "useErofs": "EROFS Mode",
-    "enableNuke": "Enable Paw Pad",
     "disableUmount": "Disable Umount",
     "allowUmountCoexistence": "Allow Umount Coexistence",
     "coexistenceRequired": "Coexistence option required",
-    "hymoStealth": "Hymo Stealth",
-    "hymoDebug": "Hymo Debug",
     "moduleDir": "Module Directory",
     "mountSource": "Mount Source",
     "mountSourceDesc": "Global mount source namespace (e.g. KSU)",
@@ -131,30 +126,6 @@
         "ignore": "Ignore"
       }
     }
-  },
-  "logs": {
-    "title": "System Logs",
-    "select": "File",
-    "current": "Current",
-    "old": "Previous",
-    "loading": "Loading logs...",
-    "refresh": "Refresh",
-    "empty": "Log is empty",
-    "readFailed": "Read failed",
-    "readException": "Error reading log",
-    "searchPlaceholder": "Search logs...",
-    "filterLabel": "Level:",
-    "levels": {
-      "all": "All",
-      "info": "Info",
-      "warn": "Warn",
-      "error": "Error"
-    },
-    "copy": "Copy",
-    "export": "Export",
-    "copySuccess": "Logs copied to clipboard",
-    "copyFail": "Failed to copy logs",
-    "exportFail": "Failed to export logs"
   },
   "info": {
     "title": "About",
