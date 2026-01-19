@@ -11,7 +11,7 @@ use crate::{
         cli::Cli,
         config::{CONFIG_FILE_DEFAULT, Config},
     },
-    core::{executor, granary, inventory, modules, planner, storage},
+    core::{granary, inventory, modules, planner, storage},
 };
 
 #[derive(Serialize)]
@@ -100,11 +100,9 @@ pub fn handle_save_module_rules(module_id: &str, payload: &str) -> Result<()> {
         .collect::<Result<Vec<u8>, _>>()
         .context("Failed to decode hex payload")?;
 
-    // Validate JSON structure by parsing it into ModuleRules
     let _rules: inventory::ModuleRules =
         serde_json::from_slice(&json_bytes).context("Failed to parse module rules JSON")?;
 
-    // Based on src/core/inventory.rs logic
     let rules_dir = Path::new("/data/adb/meta-hybrid/rules");
 
     if !rules_dir.exists() {
@@ -145,10 +143,10 @@ pub fn handle_conflicts(cli: &Cli) -> Result<()> {
     let plan = planner::generate(&config, &module_list, &config.moduledir)
         .context("Failed to generate plan for conflict analysis")?;
 
-    let report = plan.analyze_conflicts();
+    let report = plan.analyze();
 
     let json =
-        serde_json::to_string(&report.details).context("Failed to serialize conflict report")?;
+        serde_json::to_string(&report.conflicts).context("Failed to serialize conflict report")?;
 
     println!("{}", json);
 
@@ -164,15 +162,16 @@ pub fn handle_diagnostics(cli: &Cli) -> Result<()> {
     let plan = planner::generate(&config, &module_list, &config.moduledir)
         .context("Failed to generate plan for diagnostics")?;
 
-    let issues = executor::diagnose_plan(&plan);
+    let report = plan.analyze();
 
-    let json_issues: Vec<DiagnosticIssueJson> = issues
+    let json_issues: Vec<DiagnosticIssueJson> = report
+        .diagnostics
         .into_iter()
         .map(|i| DiagnosticIssueJson {
             level: match i.level {
-                executor::DiagnosticLevel::Info => "Info".to_string(),
-                executor::DiagnosticLevel::Warning => "Warning".to_string(),
-                executor::DiagnosticLevel::Critical => "Critical".to_string(),
+                planner::DiagnosticLevel::Info => "Info".to_string(),
+                planner::DiagnosticLevel::Warning => "Warning".to_string(),
+                planner::DiagnosticLevel::Critical => "Critical".to_string(),
             },
             context: i.context,
             message: i.message,
@@ -223,7 +222,6 @@ pub fn handle_system_action(cli: &Cli, action: &str, value: Option<&str>) -> Res
                 bail!("Missing Snapshot ID");
             }
         }
-        // Aliases for compatibility with old agricultural terms
         "granary-list" => handle_system_action(cli, "backup-list", value)?,
         "granary-create" => handle_system_action(cli, "backup-create", value)?,
         "granary-delete" => handle_system_action(cli, "backup-delete", value)?,

@@ -7,7 +7,6 @@ use std::{
 };
 
 use anyhow::Result;
-use walkdir::WalkDir;
 
 use crate::{
     conf::config,
@@ -20,73 +19,6 @@ use crate::{
 pub struct ExecutionResult {
     pub overlay_module_ids: Vec<String>,
     pub magic_module_ids: Vec<String>,
-}
-
-pub enum DiagnosticLevel {
-    #[allow(dead_code)]
-    Info,
-    Warning,
-    Critical,
-}
-
-pub struct DiagnosticIssue {
-    pub level: DiagnosticLevel,
-    pub context: String,
-    pub message: String,
-}
-
-pub fn diagnose_plan(plan: &MountPlan) -> Vec<DiagnosticIssue> {
-    let mut issues = Vec::new();
-
-    for op in &plan.overlay_ops {
-        let target = Path::new(&op.target);
-
-        if !target.exists() {
-            issues.push(DiagnosticIssue {
-                level: DiagnosticLevel::Critical,
-                context: op.partition_name.clone(),
-                message: format!("Target mount point does not exist: {}", op.target),
-            });
-        }
-    }
-
-    let all_layers: Vec<(String, &PathBuf)> = plan
-        .overlay_ops
-        .iter()
-        .flat_map(|op| {
-            op.lowerdirs.iter().map(move |path| {
-                let mod_id = utils::extract_module_id(path).unwrap_or_else(|| "unknown".into());
-
-                (mod_id, path)
-            })
-        })
-        .collect();
-
-    for (mod_id, layer_path) in all_layers {
-        if !layer_path.exists() {
-            continue;
-        }
-
-        for entry in WalkDir::new(layer_path).into_iter().flatten() {
-            if entry.path_is_symlink()
-                && let Ok(target) = std::fs::read_link(entry.path())
-                && target.is_absolute()
-                && !target.exists()
-            {
-                issues.push(DiagnosticIssue {
-                    level: DiagnosticLevel::Warning,
-                    context: mod_id.clone(),
-                    message: format!(
-                        "Dead absolute symlink: {} -> {}",
-                        entry.path().display(),
-                        target.display()
-                    ),
-                });
-            }
-        }
-    }
-
-    issues
 }
 
 pub fn execute(plan: &MountPlan, config: &config::Config) -> Result<ExecutionResult> {

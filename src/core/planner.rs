@@ -15,7 +15,7 @@ use walkdir::WalkDir;
 use crate::{
     conf::config,
     core::inventory::{Module, MountMode},
-    defs,
+    defs, utils,
 };
 
 #[derive(Debug, Clone)]
@@ -39,33 +39,76 @@ pub struct ConflictEntry {
     pub contending_modules: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub enum DiagnosticLevel {
+    #[allow(dead_code)]
+    Info,
+    Warning,
+    Critical,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DiagnosticIssue {
+    pub level: DiagnosticLevel,
+    pub context: String,
+    pub message: String,
+}
+
 #[derive(Debug, Default)]
-pub struct ConflictReport {
-    pub details: Vec<ConflictEntry>,
+pub struct AnalysisReport {
+    pub conflicts: Vec<ConflictEntry>,
+    pub diagnostics: Vec<DiagnosticIssue>,
 }
 
 impl MountPlan {
-    pub fn analyze_conflicts(&self) -> ConflictReport {
-        let mut conflicts: Vec<ConflictEntry> = self
+    pub fn analyze(&self) -> AnalysisReport {
+        let results: Vec<(Vec<ConflictEntry>, Vec<DiagnosticIssue>)> = self
             .overlay_ops
             .par_iter()
-            .flat_map(|op| {
+            .map(|op| {
                 let mut local_conflicts = Vec::new();
-
+                let mut local_diagnostics = Vec::new();
                 let mut file_map: HashMap<String, Vec<String>> = HashMap::new();
 
+                if !Path::new(&op.target).exists() {
+                    local_diagnostics.push(DiagnosticIssue {
+                        level: DiagnosticLevel::Critical,
+                        context: op.partition_name.clone(),
+                        message: format!("Target mount point does not exist: {}", op.target),
+                    });
+                }
+
                 for layer_path in &op.lowerdirs {
-                    let module_id = crate::utils::extract_module_id(layer_path)
-                        .unwrap_or_else(|| "UNKNOWN".into());
+                    if !layer_path.exists() {
+                        continue;
+                    }
+
+                    let module_id =
+                        utils::extract_module_id(layer_path).unwrap_or_else(|| "UNKNOWN".into());
 
                     for entry in WalkDir::new(layer_path).min_depth(1).into_iter().flatten() {
+                        if entry.path_is_symlink()
+                            && let Ok(target) = std::fs::read_link(entry.path())
+                            && target.is_absolute()
+                            && !target.exists()
+                        {
+                            local_diagnostics.push(DiagnosticIssue {
+                                level: DiagnosticLevel::Warning,
+                                context: module_id.clone(),
+                                message: format!(
+                                    "Dead absolute symlink: {} -> {}",
+                                    entry.path().display(),
+                                    target.display()
+                                ),
+                            });
+                        }
+
                         if !entry.file_type().is_file() {
                             continue;
                         }
 
                         if let Ok(rel) = entry.path().strip_prefix(layer_path) {
                             let rel_str = rel.to_string_lossy().to_string();
-
                             file_map.entry(rel_str).or_default().push(module_id.clone());
                         }
                     }
@@ -81,17 +124,23 @@ impl MountPlan {
                     }
                 }
 
-                local_conflicts
+                (local_conflicts, local_diagnostics)
             })
             .collect();
 
-        conflicts.sort_by(|a, b| {
+        let mut report = AnalysisReport::default();
+        for (c, d) in results {
+            report.conflicts.extend(c);
+            report.diagnostics.extend(d);
+        }
+
+        report.conflicts.sort_by(|a, b| {
             a.partition
                 .cmp(&b.partition)
                 .then_with(|| a.relative_path.cmp(&b.relative_path))
         });
 
-        ConflictReport { details: conflicts }
+        report
     }
 }
 

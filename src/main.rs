@@ -50,6 +50,17 @@ fn load_config(cli: &Cli) -> Result<Config> {
     }))
 }
 
+fn load_final_config(cli: &Cli) -> Result<Config> {
+    let mut config = load_config(cli)?;
+    config.merge_with_cli(
+        cli.moduledir.clone(),
+        cli.mountsource.clone(),
+        cli.verbose,
+        cli.partitions.clone(),
+    );
+    Ok(config)
+}
+
 fn main() -> Result<()> {
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
@@ -82,37 +93,18 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let mut config = load_config(&cli)?;
+    let mut config = load_final_config(&cli)?;
 
-    config.merge_with_cli(
-        cli.moduledir.clone(),
-        cli.mountsource.clone(),
-        cli.verbose,
-        cli.partitions.clone(),
-    );
-
-    match granary::ensure_recovery_state() {
-        Ok(granary::RecoveryStatus::Restored) => {
-            log::warn!(">> Config restored by Recovery Protocol. Reloading...");
-            match load_config(&cli) {
-                Ok(new_config) => {
-                    config = new_config;
-                    config.merge_with_cli(
-                        cli.moduledir.clone(),
-                        cli.mountsource.clone(),
-                        cli.verbose,
-                        cli.partitions.clone(),
-                    );
-                    log::info!(">> Config reloaded successfully.");
-                }
-                Err(e) => {
-                    log::error!(">> Failed to reload config after restore: {}", e);
-                }
+    if let Ok(granary::RecoveryStatus::Restored) = granary::ensure_recovery_state() {
+        log::warn!(">> Config restored by Recovery Protocol. Reloading...");
+        match load_final_config(&cli) {
+            Ok(new_config) => {
+                config = new_config;
+                log::info!(">> Config reloaded successfully.");
             }
-        }
-        Ok(granary::RecoveryStatus::Standby) => {}
-        Err(e) => {
-            log::error!("Failed to ensure Recovery Protocol: {}", e);
+            Err(e) => {
+                log::error!(">> Failed to reload config after restore: {}", e);
+            }
         }
     }
 
