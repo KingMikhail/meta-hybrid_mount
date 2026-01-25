@@ -1,3 +1,6 @@
+// Copyright 2026 Hybrid Mount Developers
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 pub mod executor;
 pub mod granary;
 pub mod inventory;
@@ -33,6 +36,7 @@ pub struct Planned {
 
 pub struct Executed {
     pub handle: storage::StorageHandle,
+    #[allow(dead_code)]
     pub modules: Vec<inventory::Module>,
     pub plan: planner::MountPlan,
     pub result: executor::ExecutionResult,

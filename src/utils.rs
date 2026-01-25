@@ -1,3 +1,6 @@
+// Copyright 2026 Hybrid Mount Developers
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::{
     ffi::CString,
     fs::{self, File, OpenOptions, create_dir_all, remove_dir_all, remove_file, write},
@@ -410,16 +413,15 @@ fn apply_system_context(current: &Path, relative: &Path) -> Result<()> {
         }
     } else if let Some(parent) = system_path.parent()
         && parent.exists()
+        && let Ok(parent_ctx) = lgetfilecon(parent)
+        && parent_ctx != CONTEXT_ROOTFS
     {
-        if let Ok(parent_ctx) = lgetfilecon(parent)
-            && parent_ctx != CONTEXT_ROOTFS
-        {
-            let guessed = guess_context_by_path(&system_path);
-            if guessed == CONTEXT_HAL && parent_ctx == CONTEXT_VENDOR {
-                return lsetfilecon(current, CONTEXT_HAL);
-            }
-            return lsetfilecon(current, &parent_ctx);
+        // 尝试继承父目录
+        let guessed = guess_context_by_path(&system_path);
+        if guessed == CONTEXT_HAL && parent_ctx == CONTEXT_VENDOR {
+            return lsetfilecon(current, CONTEXT_HAL);
         }
+        return lsetfilecon(current, &parent_ctx);
     }
 
     let target_context = guess_context_by_path(&system_path);
