@@ -1,20 +1,21 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail, ensure};
 use jwalk::WalkDir;
-use rustix::{
-    fs::Mode,
-    mount::{MountPropagationFlags, UnmountFlags, mount_change, unmount as umount},
-};
+use rustix::fs::Mode;
+use rustix::mount::{MountPropagationFlags, UnmountFlags, mount_change, unmount as umount};
 use serde::Serialize;
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use crate::try_umount::send_umountable;
-use crate::{core::state::RuntimeState, mount::overlayfs::utils as overlay_utils, utils};
+use crate::{
+    core::state::RuntimeState,
+    mount::overlayfs::utils as overlay_utils,
+    utils::{self, ensure_dir_exists, lsetfilecon},
+};
 
 const DEFAULT_SELINUX_CONTEXT: &str = "u:object_r:system_file:s0";
 
@@ -32,13 +33,13 @@ impl StorageHandle {
                 .as_ref()
                 .context("EROFS backing image path missing")?;
 
-            utils::create_erofs_image(&self.mount_point, image_path)
+            create_erofs_image(&self.mount_point, image_path)
                 .context("Failed to pack EROFS image")?;
 
             umount(&self.mount_point, UnmountFlags::DETACH)
                 .context("Failed to unmount staging tmpfs")?;
 
-            utils::mount_erofs_image(image_path, &self.mount_point)
+            mount_erofs_image(image_path, &self.mount_point)
                 .context("Failed to mount finalized EROFS image")?;
 
             if let Err(e) = mount_change(&self.mount_point, MountPropagationFlags::PRIVATE) {
@@ -145,7 +146,7 @@ pub fn setup(
         }
     };
 
-    if use_erofs && utils::is_erofs_supported() {
+    if use_erofs && is_erofs_supported() {
         let erofs_path = img_path.with_extension("erofs");
 
         utils::mount_tmpfs(mnt_base, mount_source)?;
@@ -194,9 +195,6 @@ fn try_setup_tmpfs(target: &Path, mount_source: &str) -> Result<bool> {
             log::info!("Tmpfs mounted and supports xattrs (CONFIG_TMPFS_XATTR=y).");
             return Ok(true);
         } else {
-            log::warn!("Tmpfs mounted but XATTRs (trusted.*) are NOT supported.");
-            log::warn!(">> Your kernel likely lacks CONFIG_TMPFS_XATTR=y.");
-            log::warn!(">> Falling back to legacy Ext4 image mode.");
             let _ = umount(target, UnmountFlags::DETACH);
         }
     }
@@ -206,21 +204,12 @@ fn try_setup_tmpfs(target: &Path, mount_source: &str) -> Result<bool> {
 
 fn setup_ext4_image(target: &Path, img_path: &Path, moduledir: &Path) -> Result<StorageHandle> {
     if img_path.exists() {
-        log::info!("Removing old ext4 image for fresh creation...");
         if let Err(e) = fs::remove_file(img_path) {
             log::warn!("Failed to remove old image: {}", e);
         }
     }
 
-    log::info!("- Preparing image");
-
     let total_size = calculate_total_size(moduledir)?;
-    log::info!(
-        "Total size of files in '{}': {} bytes",
-        moduledir.display(),
-        total_size,
-    );
-
     let min_size = 64 * 1024 * 1024;
     let grow_size = std::cmp::max((total_size as f64 * 1.2) as u64, min_size);
 
@@ -242,14 +231,11 @@ fn setup_ext4_image(target: &Path, img_path: &Path, moduledir: &Path) -> Result<
         String::from_utf8(result.stderr)?
     );
 
-    log::info!("Checking Image");
     check_image(img_path)?;
 
     utils::lsetfilecon(img_path, "u:object_r:ksu_file:s0").ok();
 
-    log::info!("- Mounting image");
-
-    utils::ensure_dir_exists(target)?;
+    ensure_dir_exists(target)?;
     if overlay_utils::AutoMountExt4::try_new(img_path, target, false).is_err() {
         if utils::repair_image(img_path).is_ok() {
             overlay_utils::AutoMountExt4::try_new(img_path, target, false)
@@ -259,8 +245,6 @@ fn setup_ext4_image(target: &Path, img_path: &Path, moduledir: &Path) -> Result<
             bail!("Failed to repair modules.img");
         }
     }
-
-    log::info!("mounted {} to {}", img_path.display(), target.display());
 
     for dir_entry in WalkDir::new(target).parallelism(jwalk::Parallelism::Serial) {
         if let Some(path) = dir_entry.ok().map(|dir_entry| dir_entry.path()) {
@@ -273,25 +257,6 @@ fn setup_ext4_image(target: &Path, img_path: &Path, moduledir: &Path) -> Result<
         mode: "ext4".to_string(),
         backing_image: Some(img_path.to_path_buf()),
     })
-}
-
-#[allow(dead_code)]
-pub fn finalize_storage_permissions(target: &Path) {
-    if let Err(e) = rustix::fs::chmod(target, Mode::from(0o755)) {
-        log::warn!("Failed to chmod storage root: {}", e);
-    }
-
-    if let Err(e) = rustix::fs::chown(
-        target,
-        Some(rustix::fs::Uid::from_raw(0)),
-        Some(rustix::fs::Gid::from_raw(0)),
-    ) {
-        log::warn!("Failed to chown storage root: {}", e);
-    }
-
-    if let Err(e) = utils::lsetfilecon(target, DEFAULT_SELINUX_CONTEXT) {
-        log::warn!("Failed to set SELinux context: {}", e);
-    }
 }
 
 pub fn print_status() -> Result<()> {
@@ -352,5 +317,60 @@ pub fn print_status() -> Result<()> {
 
     println!("{}", serde_json::to_string(&status)?);
 
+    Ok(())
+}
+
+fn is_erofs_supported() -> bool {
+    fs::read_to_string("/proc/filesystems")
+        .map(|content| content.contains("erofs"))
+        .unwrap_or(false)
+}
+
+fn create_erofs_image(src_dir: &Path, image_path: &Path) -> Result<()> {
+    let mkfs_bin = Path::new("/data/adb/metamodule/tools/mkfs.erofs");
+    let cmd_name = if mkfs_bin.exists() {
+        mkfs_bin.as_os_str()
+    } else {
+        std::ffi::OsStr::new("mkfs.erofs")
+    };
+
+    if image_path.exists() {
+        let _ = fs::remove_file(image_path);
+    }
+
+    let output = Command::new(cmd_name)
+        .arg("-z")
+        .arg("lz4hc")
+        .arg("-x")
+        .arg("256")
+        .arg(image_path)
+        .arg(src_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .context("Failed to execute mkfs.erofs")?;
+
+    if !output.status.success() {
+        bail!("Failed to create EROFS image");
+    }
+
+    let _ = fs::set_permissions(image_path, fs::Permissions::from_mode(0o644));
+    lsetfilecon(image_path, "u:object_r:ksu_file:s0")?;
+    Ok(())
+}
+
+fn mount_erofs_image(image_path: &Path, target: &Path) -> Result<()> {
+    ensure_dir_exists(target)?;
+    lsetfilecon(image_path, "u:object_r:ksu_file:s0").ok();
+    let status = Command::new("mount")
+        .args(["-t", "erofs", "-o", "loop,ro,nodev,noatime"])
+        .arg(image_path)
+        .arg(target)
+        .status()
+        .context("Failed to execute mount command for EROFS")?;
+
+    if !status.success() {
+        bail!("EROFS Mount command failed");
+    }
     Ok(())
 }

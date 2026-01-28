@@ -1,28 +1,19 @@
-use std::{
-    collections::HashSet,
-    ffi::CString,
-    fs::{self, File, OpenOptions, create_dir_all, remove_dir_all, remove_file, write},
-    io::Write,
-    os::unix::{
-        ffi::OsStrExt,
-        fs::{FileTypeExt, MetadataExt, PermissionsExt, symlink},
-    },
-    path::Path,
-    process::{Command, Stdio},
-    sync::{OnceLock, atomic::AtomicBool},
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::collections::HashSet;
+use std::ffi::CString;
+use std::fs::{self, File, OpenOptions};
+use std::io::Write;
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt, symlink};
+use std::path::Path;
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
+use rustix::fs::ioctl_ficlone;
+use walkdir::WalkDir;
+
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use extattr::{Flags as XattrFlags, lgetxattr, llistxattr, lsetxattr};
-use procfs::process::Process;
-use regex_lite::Regex;
-use rustix::{
-    fs::ioctl_ficlone,
-    mount::{MountFlags, mount},
-};
-use walkdir::WalkDir;
 
 const SELINUX_XATTR: &str = "security.selinux";
 const OVERLAY_OPAQUE_XATTR: &str = "trusted.overlay.opaque";
@@ -31,63 +22,7 @@ const CONTEXT_VENDOR: &str = "u:object_r:vendor_file:s0";
 const CONTEXT_HAL: &str = "u:object_r:same_process_hal_file:s0";
 const CONTEXT_VENDOR_EXEC: &str = "u:object_r:vendor_file:s0";
 const CONTEXT_ROOTFS: &str = "u:object_r:rootfs:s0";
-
-pub static KSU: AtomicBool = AtomicBool::new(false);
-
-#[allow(dead_code)]
 const XATTR_TEST_FILE: &str = ".xattr_test";
-
-static MODULE_ID_REGEX: OnceLock<Regex> = OnceLock::new();
-
-pub fn check_ksu() {
-    let status = ksu::version().is_some_and(|v| {
-        log::info!("KernelSU Version: {v}");
-        true
-    });
-    KSU.store(status, std::sync::atomic::Ordering::Relaxed);
-}
-
-pub fn detect_mount_source() -> String {
-    if ksu::version().is_some() {
-        return "KSU".to_string();
-    }
-    "APatch".to_string()
-}
-
-pub fn init_logging(verbose: bool) -> Result<()> {
-    let level = if verbose {
-        log::LevelFilter::Debug
-    } else {
-        log::LevelFilter::Info
-    };
-    #[cfg(target_os = "android")]
-    {
-        android_logger::init_once(
-            android_logger::Config::default()
-                .with_max_level(level)
-                .with_tag("mhm"),
-        );
-    }
-
-    #[cfg(not(target_os = "android"))]
-    {
-        use std::io::Write;
-
-        let mut builder = env_logger::Builder::new();
-
-        builder.format(|buf, record| {
-            writeln!(
-                buf,
-                "[{}] [{}] {}",
-                record.level(),
-                record.target(),
-                record.args()
-            )
-        });
-        builder.filter_level(level).init();
-    }
-    Ok(())
-}
 
 pub fn atomic_write<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C) -> Result<()> {
     let path = path.as_ref();
@@ -110,10 +45,6 @@ pub fn atomic_write<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C) -> Resu
     }
 
     if let Err(e) = fs::rename(&temp_file, path) {
-        log::debug!(
-            "atomic_write: rename failed ({}), trying copy fallback...",
-            e
-        );
         if let Err(copy_err) = fs::copy(&temp_file, path) {
             let _ = fs::remove_file(&temp_file);
             return Err(copy_err).context("atomic_write copy fallback failed");
@@ -121,22 +52,6 @@ pub fn atomic_write<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C) -> Resu
         let _ = fs::remove_file(&temp_file);
     }
     Ok(())
-}
-
-pub fn validate_module_id(module_id: &str) -> Result<()> {
-    let re = MODULE_ID_REGEX
-        .get_or_init(|| Regex::new(r"^[a-zA-Z][a-zA-Z0-9._-]+$").expect("Invalid Regex pattern"));
-    if re.is_match(module_id) {
-        Ok(())
-    } else {
-        bail!("Invalid module ID: '{module_id}'. Must match /^[a-zA-Z][a-zA-Z0-9._-]+$/")
-    }
-}
-
-pub fn check_zygisksu_enforce_status() -> bool {
-    std::fs::read_to_string("/data/adb/zygisksu/denylist_enforce")
-        .map(|s| s.trim() != "0")
-        .unwrap_or(false)
 }
 
 fn copy_extended_attributes(src: &Path, dst: &Path) -> Result<()> {
@@ -192,13 +107,7 @@ pub fn lsetfilecon<P: AsRef<Path>>(path: P, con: &str) -> Result<()> {
             con.as_bytes(),
             XattrFlags::empty(),
         ) {
-            let io_err = std::io::Error::from(e);
-            log::debug!(
-                "lsetfilecon: {} -> {} failed: {}",
-                path.as_ref().display(),
-                con,
-                io_err
-            );
+            let _ = e;
         }
     }
     Ok(())
@@ -222,7 +131,6 @@ pub fn lgetfilecon<P: AsRef<Path>>(_path: P) -> Result<String> {
     unimplemented!();
 }
 
-#[allow(dead_code)]
 pub fn copy_path_context<S: AsRef<Path>, D: AsRef<Path>>(src: S, dst: D) -> Result<()> {
     let mut context = if src.as_ref().exists() {
         lgetfilecon(&src).unwrap_or_else(|_| CONTEXT_SYSTEM.to_string())
@@ -239,39 +147,19 @@ pub fn copy_path_context<S: AsRef<Path>, D: AsRef<Path>>(src: S, dst: D) -> Resu
 
 pub fn ensure_dir_exists<T: AsRef<Path>>(dir: T) -> Result<()> {
     if !dir.as_ref().exists() {
-        create_dir_all(&dir)?;
+        fs::create_dir_all(&dir)?;
     }
     Ok(())
 }
 
-pub fn camouflage_process(name: &str) -> Result<()> {
-    let c_name = CString::new(name)?;
-    unsafe {
-        libc::prctl(libc::PR_SET_NAME, c_name.as_ptr() as u64, 0, 0, 0);
-    }
-    Ok(())
-}
-
-pub fn random_kworker_name() -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .subsec_nanos();
-    let x = nanos % 16;
-    let y = (nanos >> 4) % 10;
-    format!("kworker/u{}:{}", x, y)
-}
-
-#[allow(dead_code)]
 pub fn is_xattr_supported(path: &Path) -> bool {
     let test_file = path.join(XATTR_TEST_FILE);
-    if let Err(e) = write(&test_file, b"test") {
-        log::debug!("XATTR Check: Failed to create test file: {}", e);
+    if fs::write(&test_file, b"test").is_err() {
         return false;
     }
     let result = lsetfilecon(&test_file, "u:object_r:system_file:s0");
     let supported = result.is_ok();
-    let _ = remove_file(test_file);
+    let _ = fs::remove_file(test_file);
     supported
 }
 
@@ -303,59 +191,6 @@ pub fn is_overlay_xattr_supported() -> Result<bool> {
     }
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
     Ok(true)
-}
-
-pub fn is_mounted<P: AsRef<Path>>(path: P) -> bool {
-    let path_str = path.as_ref().to_string_lossy();
-    let search = path_str.trim_end_matches('/');
-
-    if let Ok(process) = Process::myself()
-        && let Ok(mountinfo) = process.mountinfo()
-    {
-        return mountinfo
-            .into_iter()
-            .any(|m| m.mount_point.to_string_lossy() == search);
-    }
-
-    if let Ok(content) = fs::read_to_string("/proc/mounts") {
-        for line in content.lines() {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() > 1 && parts[1] == search {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-pub fn mount_tmpfs(target: &Path, source: &str) -> Result<()> {
-    ensure_dir_exists(target)?;
-    let data = CString::new("mode=0755")?;
-    mount(
-        source,
-        target,
-        "tmpfs",
-        MountFlags::empty(),
-        Some(data.as_c_str()),
-    )
-    .context("Failed to mount tmpfs")?;
-    Ok(())
-}
-
-pub fn repair_image(image_path: &Path) -> Result<()> {
-    log::info!("Running e2fsck on {}", image_path.display());
-    let status = Command::new("e2fsck")
-        .args(["-y", "-f"])
-        .arg(image_path)
-        .status()
-        .context("Failed to execute e2fsck")?;
-
-    if let Some(code) = status.code()
-        && code > 2
-    {
-        bail!("e2fsck failed with exit code: {}", code);
-    }
-    Ok(())
 }
 
 pub fn reflink_or_copy(src: &Path, dest: &Path) -> Result<u64> {
@@ -422,7 +257,6 @@ fn apply_system_context(current: &Path, relative: &Path) -> Result<()> {
         && ctx != CONTEXT_ROOTFS
         && ctx != "u:object_r:unlabeled:s0"
     {
-        log::debug!("Keeping module context for {}: {}", current.display(), ctx);
         return Ok(());
     }
 
@@ -461,7 +295,7 @@ fn native_cp_r(
 ) -> Result<()> {
     if !dst.exists() {
         if src.is_dir() {
-            create_dir_all(dst)?;
+            fs::create_dir_all(dst)?;
         }
         if let Ok(src_meta) = src.metadata() {
             let _ = fs::set_permissions(dst, src_meta.permissions());
@@ -488,19 +322,18 @@ fn native_cp_r(
 
         if ft.is_dir() {
             if !visited.insert((dev, ino)) {
-                log::warn!("Loop detected at {}, skipping", src_path.display());
                 continue;
             }
             native_cp_r(&src_path, &dst_path, &next_relative, repair, visited)?;
         } else if ft.is_symlink() {
             if dst_path.exists() {
-                remove_file(&dst_path)?;
+                fs::remove_file(&dst_path)?;
             }
             let link_target = fs::read_link(&src_path)?;
             symlink(&link_target, &dst_path)?;
         } else if ft.is_char_device() || ft.is_block_device() || ft.is_fifo() {
             if dst_path.exists() {
-                remove_file(&dst_path)?;
+                fs::remove_file(&dst_path)?;
             }
             let mode = metadata.permissions().mode();
             let rdev = metadata.rdev();
@@ -533,115 +366,18 @@ pub fn sync_dir(src: &Path, dst: &Path, repair_context: bool) -> Result<()> {
     })
 }
 
-#[allow(dead_code)]
 pub fn cleanup_temp_dir(temp_dir: &Path) {
-    if let Err(e) = remove_dir_all(temp_dir) {
-        log::warn!(
-            "Failed to clean up temp dir {}: {:#}",
-            temp_dir.display(),
-            e
-        );
+    if let Err(e) = fs::remove_dir_all(temp_dir) {
+        let _ = e;
     }
 }
 
-#[allow(dead_code)]
 pub fn ensure_temp_dir(temp_dir: &Path) -> Result<()> {
     if temp_dir.exists() {
-        remove_dir_all(temp_dir).ok();
+        fs::remove_dir_all(temp_dir).ok();
     }
-    create_dir_all(temp_dir)?;
+    fs::create_dir_all(temp_dir)?;
     Ok(())
-}
-
-pub fn is_erofs_supported() -> bool {
-    fs::read_to_string("/proc/filesystems")
-        .map(|content| content.contains("erofs"))
-        .unwrap_or(false)
-}
-
-pub fn create_erofs_image(src_dir: &Path, image_path: &Path) -> Result<()> {
-    let mkfs_bin = Path::new("/data/adb/metamodule/tools/mkfs.erofs");
-    let cmd_name = if mkfs_bin.exists() {
-        mkfs_bin.as_os_str()
-    } else {
-        std::ffi::OsStr::new("mkfs.erofs")
-    };
-
-    log::info!("Packing EROFS image: {}", image_path.display());
-
-    if image_path.exists() {
-        if let Err(e) = fs::remove_file(image_path) {
-            log::warn!("Failed to remove old EROFS image, mkfs might fail: {}", e);
-        } else {
-            log::debug!("Removed old EROFS image for fresh creation.");
-        }
-    }
-
-    let output = Command::new(cmd_name)
-        .arg("-z")
-        .arg("lz4hc")
-        .arg("-x")
-        .arg("256")
-        .arg(image_path)
-        .arg(src_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .context("Failed to execute mkfs.erofs")?;
-
-    let log_lines = |bytes: &[u8]| {
-        let s = String::from_utf8_lossy(bytes);
-        for line in s.lines() {
-            if !line.trim().is_empty() {
-                log::debug!("{}", line);
-            }
-        }
-    };
-
-    log_lines(&output.stdout);
-    log_lines(&output.stderr);
-
-    if !output.status.success() {
-        bail!("Failed to create EROFS image");
-    }
-
-    log::info!("Build Completed.");
-    let _ = fs::set_permissions(image_path, fs::Permissions::from_mode(0o644));
-    lsetfilecon(image_path, "u:object_r:ksu_file:s0")?;
-    Ok(())
-}
-
-pub fn mount_erofs_image(image_path: &Path, target: &Path) -> Result<()> {
-    ensure_dir_exists(target)?;
-    lsetfilecon(image_path, "u:object_r:ksu_file:s0").ok();
-    let status = Command::new("mount")
-        .args(["-t", "erofs", "-o", "loop,ro,nodev,noatime"])
-        .arg(image_path)
-        .arg(target)
-        .status()
-        .context("Failed to execute mount command for EROFS")?;
-
-    if !status.success() {
-        bail!("EROFS Mount command failed");
-    }
-    Ok(())
-}
-
-pub fn extract_module_id(path: &Path) -> Option<String> {
-    let mut current = path;
-    loop {
-        if current.join("module.prop").exists() {
-            return current.file_name().map(|s| s.to_string_lossy().to_string());
-        }
-        match current.parent() {
-            Some(p) => current = p,
-            None => break,
-        }
-    }
-
-    path.parent()
-        .and_then(|p| p.file_name())
-        .map(|s| s.to_string_lossy().to_string())
 }
 
 pub fn prune_empty_dirs<P: AsRef<Path>>(root: P) -> Result<()> {
@@ -658,10 +394,7 @@ pub fn prune_empty_dirs<P: AsRef<Path>>(root: P) -> Result<()> {
     {
         if entry.file_type().is_dir() {
             let path = entry.path();
-            if let Err(e) = fs::remove_dir(path) {
-                log::debug!("Keeping dir (not empty): {} [{}]", path.display(), e);
-            } else {
-                log::debug!("Pruned empty dir: {}", path.display());
+            if fs::remove_dir(path).is_ok() {
             }
         }
     }
