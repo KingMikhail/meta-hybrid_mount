@@ -27,9 +27,8 @@ async fn main() -> Result<()> {
     };
 
     let repo = env::var("GITHUB_REPOSITORY").unwrap_or_default();
-    let run_id = env::var("GITHUB_RUN_ID").unwrap_or_default();
+    let _run_id = env::var("GITHUB_RUN_ID").unwrap_or_default();
     let server_url = env::var("GITHUB_SERVER_URL").unwrap_or("https://github.com".to_string());
-    let run_url = format!("{}/{}/actions/runs/{}", server_url, repo, run_id);
 
     let output_dir = PathBuf::from("output");
     let mut zip_file: Option<PathBuf> = None;
@@ -59,7 +58,7 @@ async fn main() -> Result<()> {
 
     println!("Selecting yield: {} ({:.2} MB)", file_name, file_size);
 
-    let commit_msg = get_git_commit_message();
+    let (commit_msg, commit_hash) = get_git_commit();
     let safe_commit_msg = escape_html(&commit_msg);
 
     let caption = format!(
@@ -67,8 +66,8 @@ async fn main() -> Result<()> {
         ⚖️ <b>重量 (Weight):</b> {:.2} MB\n\n\
         📝 <b>新性状 (Commit):</b>\n\
         <pre>{}</pre>\n\n\
-        🚜 <a href='{}'>查看日志 (View Log)</a>",
-        event_label, file_size, safe_commit_msg, run_url
+        🚜 <a href='{}/{}/commit/{}'>查看日志 (View Log)</a>",
+        event_label, file_size, safe_commit_msg, server_url, repo, commit_hash
     );
 
     println!("Dispatching yield to Granary (Telegram)...");
@@ -84,22 +83,33 @@ async fn main() -> Result<()> {
     let action = if caption.len() < 1024 {
         action.with_caption(&caption)
     } else {
-        action.with_caption(&run_url)
+        action.with_caption(format!("{}/{}/commit/{}", server_url, repo, commit_hash))
     };
     bot.execute(action).await?;
 
     Ok(())
 }
 
-fn get_git_commit_message() -> String {
+fn get_git_commit() -> (String, String) {
     let output = Command::new("git")
         .args(["log", "-1", "--pretty=%B"])
         .output();
 
-    match output {
+    let msg = match output {
         Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
         _ => "No commit message available.".to_string(),
-    }
+    };
+
+    let output = Command::new("git")
+        .args(["log", "-1", "--pretty=%H"])
+        .output();
+
+    let hash = match output {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        _ => "000000".to_string(),
+    };
+
+    (msg, hash)
 }
 
 fn escape_html(input: &str) -> String {
