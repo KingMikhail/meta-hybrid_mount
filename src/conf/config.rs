@@ -37,8 +37,8 @@ impl Default for BackupConfig {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum OverlayMode {
-    #[default]
     Tmpfs,
+    #[default]
     Ext4,
     Erofs,
 }
