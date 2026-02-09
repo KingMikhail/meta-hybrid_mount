@@ -118,6 +118,18 @@ pub fn setup(
     mount_source: &str,
     disable_umount: bool,
 ) -> Result<StorageHandle> {
+    if img_path.exists() {
+        if let Err(e) = fs::remove_file(img_path) {
+            log::warn!("Failed to remove old ext4 image: {}", e);
+        }
+    }
+    let erofs_path = img_path.with_extension("erofs");
+    if erofs_path.exists() {
+        if let Err(e) = fs::remove_file(&erofs_path) {
+            log::warn!("Failed to remove old erofs image: {}", e);
+        }
+    }
+
     if is_mounted(mnt_base) {
         let _ = umount(mnt_base, UnmountFlags::DETACH);
     }
@@ -168,12 +180,6 @@ pub fn setup(
 
         try_hide(mnt_base);
 
-        let erofs_path = img_path.with_extension("erofs");
-
-        if erofs_path.exists() {
-            let _ = fs::remove_file(erofs_path);
-        }
-
         return Ok(StorageHandle {
             mount_point: mnt_base.to_path_buf(),
             mode: "tmpfs".to_string(),
@@ -205,12 +211,6 @@ fn try_setup_tmpfs(target: &Path, mount_source: &str) -> Result<bool> {
 }
 
 fn setup_ext4_image(target: &Path, img_path: &Path, moduledir: &Path) -> Result<StorageHandle> {
-    if img_path.exists()
-        && let Err(e) = fs::remove_file(img_path)
-    {
-        log::warn!("Failed to remove old image: {}", e);
-    }
-
     let total_size = calculate_total_size(moduledir)?;
     let min_size = 64 * 1024 * 1024;
     let grow_size = std::cmp::max((total_size as f64 * 1.2) as u64, min_size);
@@ -277,10 +277,6 @@ fn create_erofs_image(src_dir: &Path, image_path: &Path) -> Result<()> {
     } else {
         std::ffi::OsStr::new("mkfs.erofs")
     };
-
-    if image_path.exists() {
-        let _ = fs::remove_file(image_path);
-    }
 
     let output = Command::new(cmd_name)
         .arg("-z")
