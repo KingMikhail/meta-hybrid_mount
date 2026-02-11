@@ -26,9 +26,11 @@ where
         .lock()
         .map_err(|_| anyhow::anyhow!("Failed to lock history mutex"))?;
 
-    if history.contains(&path.to_string()) {
-        log::debug!("Ignored duplicate umount request: {path}");
-        return Ok(());
+    for i in history.iter() {
+        if i.starts_with(path) {
+            log::debug!("umount list already includes the parent directory of {path}.");
+            return Ok(());
+        }
     }
 
     history.insert(path.to_string());
