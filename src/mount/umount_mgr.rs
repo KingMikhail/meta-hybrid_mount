@@ -54,9 +54,5 @@ pub fn commit() -> Result<()> {
         }
     }
 
-    if let Ok(mut history) = HISTORY.lock() {
-        history.clear();
-    }
-
     Ok(())
 }
