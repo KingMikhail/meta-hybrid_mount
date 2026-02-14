@@ -1,12 +1,12 @@
 {
     "metamodule": true,
     "summary": "Next Generation Mounting Matemodule with OverlayFS and Magic Mount.",
-    "sourceUrl": "https://github.com/Hybrid-Mount/meta-hybrid_mount",
+    "sourceUrl": "https://github.com/KingMikhail/Meta-Hybrid-Mount",
     "additionalAuthors": [
         {
             "type": "add",
             "name": "Hybrid Mount Developers",
-            "link": "https://github.com/Hybrid-Mount"
+            "link": "https://github.com/KingMikhail/Hybrid-Mount"
         },
         {
             "type": "remove",
