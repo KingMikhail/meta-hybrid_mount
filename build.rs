@@ -19,7 +19,7 @@ struct CargoConfig {
 
 #[derive(Deserialize)]
 struct Metadata {
-    hybrid_mount: Update,
+    Hybrid-Mount: Update,
 }
 
 #[derive(Deserialize)]
