@@ -8,7 +8,7 @@ export interface ModuleRules {
   paths: Record<string, string>;
 }
 
-export type OverlayMode = "tmpfs" | "ext4" | "erofs";
+export type OverlayMode = "TMPFS" | "Ext4" | "Erofs";
 
 export interface AppConfig {
   moduledir: string;
@@ -20,7 +20,7 @@ export interface AppConfig {
   logfile?: string;
 }
 
-export type MountMode = "overlay" | "magic" | "ignore";
+export type MountMode = "Overlay" | "Magic" | "Ignore";
 
 export interface Module {
   id: string;
