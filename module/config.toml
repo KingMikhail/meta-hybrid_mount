@@ -1,4 +1,4 @@
 moduledir = "/data/adb/modules/"
 mountsource = "KSU"
 partitions = []
-default_mode = "overlay"
+default_mode = "Overlay"
