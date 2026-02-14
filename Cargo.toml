@@ -3,18 +3,18 @@ members = ["xtask"]
 resolver = "2"
 
 [package]
-name = "hybrid-mount"
+name = "Hybrid-Mount"
 version = "3.0.2"
 edition = "2024"
-description = "Waiting for daemon..."
-authors = ["Hybrid Mount Developers"]
+description = "Waiting for Daemon..."
+authors = ["Andrei & Hybrid Mount Developers"]
 license = "GPL-3.0"
 readme = "README.md"
-repository = "https://github.com/Hybrid-Mount/meta-hybrid_mount"
+repository = "https://github.com/KingMikhail/Meta-Hybrid-Mount"
 
 [package.metadata.hybrid_mount]
 name = "Hybrid Mount"
-update = "https://raw.githubusercontent.com/YuzakiKokuban/meta-hybrid_mount/master/update.json"
+update = "https://raw.githubusercontent.com/KingMikhail/Meta-Hybrid-Mount/master/update.json"
 
 
 [dependencies]
