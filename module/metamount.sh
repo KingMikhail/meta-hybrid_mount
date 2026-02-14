@@ -1,11 +1,11 @@
 MODDIR="${0%/*}"
-BASE_DIR="/data/adb/hybrid-mount"
+BASE_DIR="/data/adb/Hybrid-Mount"
 
 mkdir -p "$BASE_DIR"
 
-BINARY="$MODDIR/hybrid-mount"
+BINARY="$MODDIR/Hybrid-Mount"
 if [ ! -f "$BINARY" ]; then
-  echo "ERROR: Binary not found at $BINARY"
+  echo "Error: Binary Not Found At $BINARY"
   exit 1
 fi
 
